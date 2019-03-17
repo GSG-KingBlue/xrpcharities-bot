@@ -1,6 +1,7 @@
 import * as mqtt from 'mqtt';
 import * as tipbot from './api/tipbotApi';
 import * as twitter from './api/twitterApi';
+import * as config from './config/config';
 
 let mqttClient: mqtt.Client;
 let friendList:string[] = [];
@@ -14,7 +15,7 @@ async function initBot() {
 }
 
 function initMQTT() {
-    mqttClient = mqtt.connect('mqtt://mqtt.xrptipbot-api.siedentopf.xyz:4001');
+    mqttClient = mqtt.connect(config.MQTT_URL);
     mqttClient.on('connect', () => {
         console.log("MQTT connected.")
     });
