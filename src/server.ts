@@ -49,28 +49,34 @@ function initMQTT() {
 
 async function initTwitterAndTipbot(): Promise<boolean> {
     //init twitter
-    let followerResponse = await twitter.getCurrentFollowers();
-    if(followerResponse && followerResponse.data && followerResponse.data.users) {
-        let followers = followerResponse.data.users;
-        //get all accounts which the bot follows
-        for(let i = 0; i<followers.length;i++)
-            friendList.push(followers[i].screen_name);
-    } else {
-        console.log("could not get follower list");
-        return false;
-    }
-
-    //init tipbot
-    //check if balance is accessible, if not do login to activate token
-    let balance = await tipbot.getBalance();
-    if(!balance || balance<0) {
-        //activate token
-        await tipbot.login();
-        //check if token is working now
-        let balance2 = await tipbot.getBalance();
-        if(!balance2 || balance2<0)
-            //something went wrong, check tipbot api
+    try {
+        let followerResponse = await twitter.getCurrentFollowers();
+        if(followerResponse && followerResponse.data && followerResponse.data.users) {
+            let followers = followerResponse.data.users;
+            //get all accounts which the bot follows
+            for(let i = 0; i<followers.length;i++)
+                friendList.push(followers[i].screen_name);
+        } else {
+            console.log("could not get follower list");
             return false;
+        }
+
+        //init tipbot
+        //check if balance is accessible, if not do login to activate token
+        let balance = await tipbot.getBalance();
+        if(!balance || balance<0) {
+            //activate token
+            await tipbot.login();
+            //check if token is working now
+            let balance2 = await tipbot.getBalance();
+            if(!balance2 || balance2<0)
+                //something went wrong, check tipbot api
+                return false;
+        }
+    } catch(err) {
+        //initialization failed
+        console.log("error: " + JSON.stringify(err));
+        return false;
     }
     
     return true;
@@ -108,7 +114,12 @@ async function splitIncomingTip(newTip: any) {
             tweetString+= '@'+ friendList[i]+ ' +' + amountEachCharity + ' XRP\n';
 
         console.log("Sending out new tweet: \n" + tweetString);
-        twitter.sendOutTweet(tweetString);
+        try {
+            twitter.sendOutTweet(tweetString);
+        } catch(err) {
+            console.log("Could not send out tweet!")
+            console.log(JSON.stringify(err));
+        }
     }
 
     checkForRemainingBalance();
