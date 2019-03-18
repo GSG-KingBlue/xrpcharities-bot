@@ -15,10 +15,14 @@ async function initBot() {
     //init twitter and tipbot api
     let initSuccessfull = await initTwitterAndTipbot();
     console.log("friendList: " + JSON.stringify(friendList));
-    if(!initSuccessfull)
+    if(!initSuccessfull) {
         console.log("Could not init twitter or tipbot. Bot not working.")
-    else if(friendList && friendList.length<=0)
+        process.stdin.resume();
+    }
+    else if(friendList && friendList.length<=0) {
         console.log("The twitter user does not follow anyone. Bot not working.")
+        process.stdin.resume();
+    }
     else
         //everything is fine - connect to MQTT and listen for transactions
         initMQTT();
@@ -36,6 +40,7 @@ function initMQTT() {
 
     mqttClient.on('error', err => {
         console.log("MQTT not ready: " + err);
+        process.stdin.resume();
     });
 
     mqttClient.on('message', (topic, message) => {
