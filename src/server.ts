@@ -88,7 +88,7 @@ async function initTwitterAndTipbot(): Promise<boolean> {
 }
 
 async function splitIncomingTip(newTip: any) {
-    console.log("received a new tip of " + newTip.xrp + " XRP");
+    console.log("received a new " + newTip.type + " of " + newTip.xrp + " XRP");
     //get amount for each charity
     let amountEachCharity = calculateAmountForEachCharity(newTip.xrp)
 

@@ -11,7 +11,6 @@ export async function sendTip(network:string, user: string, xrp: number) {
 
 export async function getBalance(): Promise<number> {
     let balanceResponse:any = await callTipbotApi('/action:balance/', 'POST', {'token': config.TIPBOT_API_KEY});
-    console.log("balanceResponse: " + JSON.stringify(balanceResponse));
     if(balanceResponse && !balanceResponse.error)
         return balanceResponse.data.balance.XRP
     else return -1;
