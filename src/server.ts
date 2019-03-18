@@ -152,21 +152,27 @@ function calculateAmountForEachCharity(originalXrpAmount:number): number {
 }
 
 function checkEnvironmentVariables() {
+    console.log("MQTT_TOPIC_USER: " + config.MQTT_TOPIC_USER);
     if(!config.MQTT_TOPIC_USER)
         console.log("Please set the MQTT_TOPIC_USER as environment variable")
     
+    console.log("TIPBOT_API_KEY: " + config.TIPBOT_API_KEY);
     if(!config.TIPBOT_API_KEY)
         console.log("Please set the TIPBOT_API_KEY as environment variable");
 
+    console.log("TWITTER_CONSUMER_KEY: " + config.TWITTER_CONSUMER_KEY);
     if(!config.TWITTER_CONSUMER_KEY)
         console.log("Please set the TWITTER_CONSUMER_KEY as environment variable");
 
+    console.log("TWITTER_CONSUMER_SECRET: " + config.TWITTER_CONSUMER_SECRET);
     if(!config.TWITTER_CONSUMER_SECRET)
         console.log("Please set the TWITTER_CONSUMER_SECRET as environment variable");
 
+    console.log("TWITTER_ACCESS_TOKEN: " + config.TWITTER_ACCESS_TOKEN);
     if(!config.TWITTER_ACCESS_TOKEN)
         console.log("Please set the TWITTER_ACCESS_TOKEN as environment variable");
 
+    console.log("TWITTER_ACCESS_SECRET: " + config.TWITTER_ACCESS_SECRET);
     if(!config.TWITTER_ACCESS_SECRET)
         console.log("Please set the TWITTER_ACCESS_SECRET as environment variable");
 }
