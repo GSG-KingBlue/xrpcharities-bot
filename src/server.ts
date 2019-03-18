@@ -43,8 +43,8 @@ function initMQTT() {
         splitIncomingTip(newTip);
     });
     
-    mqttClient.subscribe(config.MQTT_TOPIC_USER + '/received');
-    mqttClient.subscribe(config.MQTT_TOPIC_USER + '/deposit');
+    mqttClient.subscribe('twitter/'+config.MQTT_TOPIC_USER+'/received');
+    mqttClient.subscribe('twitter/'+config.MQTT_TOPIC_USER+'/deposit');
 }
 
 async function initTwitterAndTipbot(): Promise<boolean> {
