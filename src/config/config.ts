@@ -1,5 +1,6 @@
 //mqtt
 export const MQTT_URL = process.env.MQTT_URL || 'mqtt://mqtt.xrptipbot-api.siedentopf.xyz:4001'
+export const MQTT_TOPIC_USER = process.env.MQTT_TOPIC_USER;
 
 //tipbot api
 export const TIPBOT_URL = process.env.TIPBOT_URL || 'https://www.xrptipbot.com/app/api';
