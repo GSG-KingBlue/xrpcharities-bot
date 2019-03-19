@@ -1,3 +1,5 @@
 .git
 /src/dist
 /src/node_modules
+
+local_config.txt

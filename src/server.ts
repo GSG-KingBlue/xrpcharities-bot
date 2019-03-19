@@ -23,9 +23,12 @@ async function initBot() {
         console.log("The twitter user does not follow anyone. Bot not working.")
         process.stdin.resume();
     }
-    else
+    else {
         //everything is fine - connect to MQTT and listen for transactions
         initMQTT();
+        console.log("Waiting for tips...");
+    }
+
 }
 
 function initMQTT() {
@@ -48,8 +51,10 @@ function initMQTT() {
         splitIncomingTip(newTip);
     });
     
-    mqttClient.subscribe('twitter/'+config.MQTT_TOPIC_USER+'/received');
-    mqttClient.subscribe('twitter/'+config.MQTT_TOPIC_USER+'/deposit');
+    console.log("subscribing to topic: " + 'tip/received/twitter/'+config.MQTT_TOPIC_USER);
+    console.log("subscribing to topic: " + 'deposit/twitter/'+config.MQTT_TOPIC_USER);
+    mqttClient.subscribe('tip/received/twitter/'+config.MQTT_TOPIC_USER);
+    mqttClient.subscribe('deposit/twitter/'+config.MQTT_TOPIC_USER);
 }
 
 async function initTwitterAndTipbot(): Promise<boolean> {
@@ -107,24 +112,17 @@ async function splitIncomingTip(newTip: any) {
             //handle tips from twitter users
             if('twitter'===newTip.network || 'twitter'===newTip.user_network)
                 tweetString = '@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
-            //handle tips from discord users
-            else if('discord'===newTip.user_network)
-                tweetString = newTip.user_id+' from discord donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
-            //handle tips from reddit users
-            else if('reddit'===newTip.user_network)
-                tweetString = newTip.user+' from reddit donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
+            //handle tips from discord and reddit users
+            else
+                tweetString = ('discord'===newTip.user_network? newTip.user_id : newTip.user) +' from '+newTip.user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
         }
 
         for(let i = 0; i<friendList.length;i++)
             tweetString+= '@'+ friendList[i]+ ' +' + amountEachCharity + ' XRP\n';
 
-        console.log("Sending out new tweet: \n" + tweetString);
-        try {
-            twitter.sendOutTweet(tweetString);
-        } catch(err) {
-            console.log("Could not send out tweet!")
-            console.log(JSON.stringify(err));
-        }
+        let greetingText = '\n'+twitter.getRandomGreetingsText()+'\n#XRPforGood #XRPCommunity #XRP';
+
+        twitter.sendOutTweet(tweetString,greetingText);
     }
 
     checkForRemainingBalance();
@@ -136,6 +134,7 @@ async function checkForRemainingBalance() {
     if(remainingXRPToForward > 0 && (remainingXRPToForward*1000000)%friendList.length == 0) {
         //ok perfect, the amount can be divided by the number of charities. we can send out another tip to all charities
         let remainingXRPEachCharity = calculateAmountForEachCharity(remainingXRPToForward);
+        console.log("Account balance could be divided. Sending " + remainingXRPEachCharity + " XRP to each charity.")
         for(let i = 0;i<friendList.length;i++) {
             await tipbot.sendTip('twitter', friendList[i], remainingXRPEachCharity);
         }
