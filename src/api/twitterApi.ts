@@ -7,8 +7,14 @@ let additionalTweetText:string[] = [
     "What a wonderful way to start the day.",
     "Saving the world. A few XRP at a time.",
     "Good people do good things.",
-    "Wow, what a great way to share some XRP!"
-
+    "Wow, what a great way to share some XRP!",
+    "Time to make it rain!",
+    "We love @xrptipbot!",
+    "Giving is great, giving XRP is AMAZING!",
+    "Thank you for being a Good Soul.",
+    "Helping the world, one donation at a time.",
+    "Your generosity is appreciated.",
+    "Spreading the XRP love.",
 ];
 
 let twitterClient = new Twit({
