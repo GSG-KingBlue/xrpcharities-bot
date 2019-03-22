@@ -1,4 +1,5 @@
 import * as mqtt from 'mqtt';
+import * as shuffle from 'shuffle-array';
 import * as tipbot from './api/tipbotApi';
 import * as twitter from './api/twitterApi';
 import * as config from './config/config';
@@ -93,7 +94,7 @@ async function initTwitterAndTipbot(): Promise<boolean> {
 }
 
 async function splitIncomingTip(newTip: any) {
-    console.log("received a new " + newTip.type + " of " + newTip.xrp + " XRP");
+    console.log("\n\nreceived a new " + newTip.type + " of " + newTip.xrp + " XRP");
     //get amount for each charity
     let amountEachCharity = calculateAmountForEachCharity(newTip.xrp)
 
@@ -117,10 +118,12 @@ async function splitIncomingTip(newTip: any) {
                 tweetString = ('discord'===newTip.user_network? newTip.user_id : newTip.user) +' from '+newTip.user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
         }
 
-        for(let i = 0; i<friendList.length;i++)
-            tweetString+= '@'+ friendList[i]+ ' +' + amountEachCharity + ' XRP\n';
+        //shuffle charities before putting out a new tweet!
+        let shuffledCharities = shuffle(friendList, { 'copy': true });
+        for(let i = 0; i<shuffledCharities.length;i++)
+            tweetString+= '@'+ shuffledCharities[i]+ ' +' + amountEachCharity + ' XRP\n';
 
-        let greetingText = '\n'+twitter.getRandomGreetingsText()+'\n#XRPforGood #XRPCommunity #XRP';
+        let greetingText = '\n'+twitter.getRandomGreetingsText()+'\n'+twitter.getRandomHashtagText();
 
         twitter.sendOutTweet(tweetString,greetingText);
     }

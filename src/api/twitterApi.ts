@@ -1,21 +1,28 @@
 import * as Twit from 'twit';
+import * as shuffle from 'shuffle-array';
 import * as config from '../config/config';
 
 let additionalTweetText:string[] = [
     "Thank you for your donation!",
     "Can we have a retweet and spread the good word?",
     "What a wonderful way to start the day.",
-    "Saving the world. A few #XRP at a time.",
+    "Saving the world. A few $XRP at a time.",
     "Good people do good things.",
-    "Wow, what a great way to share some #XRP!",
+    "Wow, what a great way to share some $XRP!",
     "Time to make it rain!",
-    "We love @xrptipbot!",
-    "Giving is great, giving #XRP is AMAZING!",
+    "We love the xrptipbot!",
+    "Giving is great, giving $XRP is AMAZING!",
     "Thank you for being a Good Soul.",
     "Helping the world, one donation at a time.",
     "Your generosity is appreciated.",
-    "Spreading the #XRP love.",
+    "Spreading the $XRP love.",
 ];
+
+let additionalHashtags:string[] = [
+    "#XRPforGood",
+    "#XRPCommunity",
+    "#XRP"
+]
 
 let twitterClient = new Twit({
     consumer_key: config.TWITTER_CONSUMER_KEY,
@@ -33,15 +40,16 @@ export async function sendOutTweet(message: string, greetingText: string) {
     try {
         await twitterClient.post('statuses/update', {status: message+greetingText});
     } catch(err) {
+        console.log(JSON.stringify(err));
         console.log("Could not send out tweet! Trying again.")
         if(err && err.code) {
             try {
                 if(err.code == 186) {
                     //tweet to long. try to send tweet without any greeting!
                     await twitterClient.post('statuses/update', {status: message});
-                } else if(err.code==187) {
+                } else if(err.code == 187) {
                     //duplicate tweet exception, try another greetings text
-                    greetingText = '\n'+getRandomGreetingsText() + '#XRPforGood #XRPCommunity #XRP';
+                    greetingText = '\n'+getRandomGreetingsText() + '\n' + getRandomHashtagText();
                     console.log("sending out modified message:\n" + message+greetingText);
                     
                         await twitterClient.post('statuses/update', {status: message+greetingText});
@@ -58,4 +66,13 @@ export async function sendOutTweet(message: string, greetingText: string) {
 export function getRandomGreetingsText(): string {
     //return a random text, the range is the length of the text array
     return additionalTweetText[Math.floor(Math.random() * additionalTweetText.length)];
+}
+
+export function getRandomHashtagText(): string {
+    let shuffledHashtags = shuffle(additionalHashtags, { 'copy': true });
+    let hashtags = "";
+    for(let i = 0; i<shuffledHashtags.length;i++)
+        hashtags+=shuffledHashtags[i] + " ";
+    
+    return hashtags.trim();
 }
