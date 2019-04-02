@@ -2,6 +2,8 @@ import * as Twit from 'twit';
 import * as shuffle from 'shuffle-array';
 import * as config from '../config/config';
 
+let latestMentionId:string = "0";
+
 let additionalTweetText:string[] = [
     "Thank you for your donation!",
     "Can we have a retweet and spread the good word?",
@@ -35,7 +37,7 @@ export async function getCurrentFollowers(): Promise<any> {
     return twitterClient.get('friends/list');
 }
 
-export async function sendOutTweet(message: string, greetingText: string) {
+export async function sendOutNormalTweet(message: string, greetingText: string): Promise<any> {
     console.log("Sending out new tweet: \n" + message+greetingText);
     try {
         await twitterClient.post('statuses/update', {status: message+greetingText});
@@ -60,6 +62,51 @@ export async function sendOutTweet(message: string, greetingText: string) {
                 console.log(JSON.stringify(err));
             }
         }
+    }
+}
+
+export async function sendOutWithLinkedTweet(tweetId:string, message: string, greetingText: string) {
+    console.log("Sending out retweet: \n" + message+greetingText);
+    try {
+        await twitterClient.post('statuses/retweet/'+tweetId, {status: message+greetingText});
+    } catch(err) {
+    }
+}
+
+export async function checkForRetweetMatch(user: string, xrp: number): Promise<string> {
+    try {
+        let latestMentions = await getMentions();
+        console.log("checking mentions: " + latestMentions.length);
+        for(let i = 0; i < latestMentions.length;i++) {
+            console.log(JSON.stringify(latestMentions[i]));
+            if(latestMentions[i].text.contains(user)
+                && latestMentions[i].text.contains(xrp+'')) {
+                //seems we have a match -> return tweet id string to retweet
+                latestMentionId = latestMentions[i].id_str;
+                return latestMentions[i].id_str;
+            }
+        }
+
+        return null;
+    } catch(err) {
+        console.log("Err Mentions: " + JSON.stringify(err));
+        return null;
+    }
+}
+
+export async function getMentions() : Promise<any[]> {
+    console.log("Getting latest mentions");
+    try {
+        let mentions:any = await twitterClient.get('statuses/mentions_timeline');
+        
+        if(mentions && mentions.data)
+            return mentions.data;
+        else
+            return [];
+    } catch(err) {
+        console.log("couldn`t get latest mentions");
+        console.log(JSON.stringify(err));
+        return [];
     }
 }
 
