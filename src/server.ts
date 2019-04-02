@@ -108,11 +108,11 @@ async function splitIncomingTip(newTip: any) {
         //send out tweet
         let tweetString = "";
         if('deposit'===newTip.type) {
-            tweetString = '@'+config.MQTT_TOPIC_USER+' just received a direct deposit of ' + newTip.xrp + ' XRP.\n\n';
+            tweetString = '.@'+config.MQTT_TOPIC_USER+' just received a direct deposit of ' + newTip.xrp + ' XRP.\n\n';
         } else {
             //handle tips from twitter users
             if('twitter'===newTip.network || 'twitter'===newTip.user_network)
-                tweetString = '@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
+                tweetString = '.@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
             //handle tips from discord and reddit users
             else
                 tweetString = ('discord'===newTip.user_network? newTip.user_id : newTip.user) +' from '+newTip.user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
