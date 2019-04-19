@@ -5,15 +5,16 @@ export async function login() {
     return callTipbotApi('/action:login/', 'POST',{"token": config.TIPBOT_API_KEY, "platform": "twitter", "model": "xrpcharities-bot"});
 }
 
-export async function sendTip(network:string, user: string, xrp: number): Promise<any> {
-    //maximum amount which can be sent at a time is 20. Use loop to send multiple payments
-    while(xrp>20) {
-        await callTipbotApi('/action:tip/', 'POST', {'token': config.TIPBOT_API_KEY, 'to': 'xrptipbot://'+network+'/'+user, 'amount': 20});
-        xrp-=20;
+export async function sendTip(network:string, user: string, dropsToSend: number): Promise<any> {
+    console.log("sending " + dropsToSend/config.DROPS + " to " + user + " on " + network);
+    //maximum amount which can be sent at a time is 400. Use loop to send multiple payments
+    while(dropsToSend > config.MAX_XRP_VIA_TIP*config.DROPS) {
+        await callTipbotApi('/action:tip/', 'POST', {'token': config.TIPBOT_API_KEY, 'to': 'xrptipbot://'+network+'/'+user, 'amount': config.MAX_XRP_VIA_TIP});
+        dropsToSend -= config.MAX_XRP_VIA_TIP*config.DROPS;
     }
 
     //always return the last response (may be needed elsewhere?)
-    return callTipbotApi('/action:tip/', 'POST', {'token': config.TIPBOT_API_KEY, 'to': 'xrptipbot://'+network+'/'+user, 'amount': xrp});
+    return callTipbotApi('/action:tip/', 'POST', {'token': config.TIPBOT_API_KEY, 'to': 'xrptipbot://'+network+'/'+user, 'amount': dropsToSend/config.DROPS});
 }
 
 export async function getBalance(): Promise<number> {

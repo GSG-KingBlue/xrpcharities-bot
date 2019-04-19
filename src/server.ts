@@ -96,12 +96,13 @@ async function initTwitterAndTipbot(): Promise<boolean> {
 async function splitIncomingTip(newTip: any) {
     console.log("\n\nreceived a new " + newTip.type + " of " + newTip.xrp + " XRP");
     //get amount for each charity
-    let amountEachCharity = calculateAmountForEachCharity(newTip.xrp)
+    //multiply by 1,000,000 to get the perfect rounding (always calculate in drops!)
+    let dropsForEachCharity = calculateDropsForEachCharity(newTip.xrp*config.DROPS)
 
-    if(amountEachCharity>0) {
-        console.log("Sending " + amountEachCharity + " XRP to each charity!");
+    if(dropsForEachCharity>0) {
+        console.log("Sending " + dropsForEachCharity/config.DROPS + " XRP to each charity!");
         for(let i = 0;i<friendList.length;i++) {
-            await tipbot.sendTip('twitter', friendList[i], amountEachCharity);
+            await tipbot.sendTip('twitter', friendList[i], dropsForEachCharity);
         }
 
         console.log("Generating new tweet");
@@ -115,17 +116,19 @@ async function splitIncomingTip(newTip: any) {
                 tweetString = '.@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
             //handle tips from discord and reddit users
             else
-                tweetString = ('discord'===newTip.user_network? newTip.user_id : newTip.user) +' from '+newTip.user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
+                tweetString = ('discord'===newTip.user_network ? newTip.user_id : newTip.user) +' from '+newTip.user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
         }
 
         //shuffle charities before putting out a new tweet!
         let shuffledCharities = shuffle(friendList, { 'copy': true });
         for(let i = 0; i<shuffledCharities.length;i++)
-            tweetString+= '@'+ shuffledCharities[i]+ ' +' + amountEachCharity + ' XRP\n';
+            tweetString+= '@'+ shuffledCharities[i]+ ' +' + dropsForEachCharity/config.DROPS + ' XRP\n';
 
         let greetingText = '\n'+twitter.getRandomGreetingsText()+'\n'+twitter.getRandomHashtagText();
 
         twitter.sendOutTweet(tweetString,greetingText);
+    } else {
+        console.log("tip too small to split. ignoring.")
     }
 
     checkForRemainingBalance();
@@ -134,23 +137,24 @@ async function splitIncomingTip(newTip: any) {
 async function checkForRemainingBalance() {
     //check if there is some balance left and forward it when amount can get equaly divided by all charities
     let remainingXRPToForward = await tipbot.getBalance();
-    if(remainingXRPToForward > 0 && (remainingXRPToForward*1000000)%friendList.length == 0) {
+    let remainingDropsToForward = remainingXRPToForward*config.DROPS;
+    if(remainingDropsToForward > 0 && remainingDropsToForward%friendList.length == 0) {
         //ok perfect, the amount can be divided by the number of charities. we can send out another tip to all charities
-        let remainingXRPEachCharity = calculateAmountForEachCharity(remainingXRPToForward);
-        console.log("Account balance could be divided. Sending " + remainingXRPEachCharity + " XRP to each charity.")
+        let remainingDropsEachCharity = calculateDropsForEachCharity(remainingDropsToForward);
+        console.log("Account balance could be divided. Sending " + remainingDropsEachCharity/config.DROPS + " XRP to each charity.")
         for(let i = 0;i<friendList.length;i++) {
-            await tipbot.sendTip('twitter', friendList[i], remainingXRPEachCharity);
+            await tipbot.sendTip('twitter', friendList[i], remainingDropsEachCharity);
         }
     }
 }
 
-function calculateAmountForEachCharity(originalXrpAmount:number): number {
-    //multiply by 1,000,000 to get the perfect rounding (always calculate in drops!)
-    let xrpToSplit = originalXrpAmount*1000000;
-    //divide amount to split by number of accounts the bot follows
-    let amountEachCharity = Math.floor(xrpToSplit/friendList.length);
-    //divide by 1,000,000 to get back the drops correct
-    return amountEachCharity/1000000;
+function calculateDropsForEachCharity(dropsToSplit:number): number {
+    //if less drops than number of friends, we cannot split!
+    if(dropsToSplit < friendList.length)
+        return 0;
+    else
+        //divide drops to split by number of accounts the bot follows
+        return Math.floor(dropsToSplit/friendList.length);        
 }
 
 function checkEnvironmentVariables() {
