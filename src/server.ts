@@ -3,15 +3,35 @@ import * as shuffle from 'shuffle-array';
 import * as tipbot from './api/tipbotApi';
 import * as twitter from './api/twitterApi';
 import * as config from './config/config';
+import * as storage from 'node-persist';
+
+import consoleStamp = require("console-stamp");
+
+consoleStamp(console, { pattern: 'dd-MM-yyyy HH:MM:ss' });
 
 let mqttClient: mqtt.Client;
 let friendList:string[] = [];
+
+let tipQueue:any[] = [];
+let processingTip = false;
+let processingRemaining = false;
+
+let processRemainingTimeout:NodeJS.Timeout;
 
 initBot();
 
 async function initBot() {
     //check if all environment variables are set
     checkEnvironmentVariables();
+
+    //init storage
+    await storage.init({dir: 'storage'});
+
+    //check if there is still a tip queue
+    if(await storage.getItem('tipQueue'))
+        tipQueue = await storage.getItem('tipQueue');
+
+    console.log("loaded tipQueue: " + JSON.stringify(tipQueue));
 
     //init twitter and tipbot api
     let initSuccessfull = await initTwitterAndTipbot();
@@ -28,6 +48,8 @@ async function initBot() {
         //everything is fine - connect to MQTT and listen for transactions
         initMQTT();
         console.log("Waiting for tips...");
+
+        setInterval(() => splitTips(), 15000);
     }
 
 }
@@ -49,7 +71,12 @@ function initMQTT() {
 
     mqttClient.on('message', (topic, message) => {
         let newTip = JSON.parse(message.toString());
-        splitIncomingTip(newTip);
+        //new tip came in, pushing to queue
+        console.log("");
+        console.log("received a new tip. pushing to queue " + newTip.xrp + " xrp.")
+        console.log("");
+        tipQueue.push(newTip);
+        storage.setItem('tipQueue', tipQueue);
     });
     
     console.log("subscribing to topic: " + 'tip/received/twitter/'+config.MQTT_TOPIC_USER);
@@ -67,6 +94,8 @@ async function initTwitterAndTipbot(): Promise<boolean> {
             //get all accounts which the bot follows
             for(let i = 0; i<followers.length;i++)
                 friendList.push(followers[i].screen_name);
+
+            await twitter.initStorageAndInterval();
         } else {
             console.log("could not get follower list");
             return false;
@@ -93,57 +122,120 @@ async function initTwitterAndTipbot(): Promise<boolean> {
     return true;
 }
 
-async function splitIncomingTip(newTip: any) {
-    console.log("\n\nreceived a new " + newTip.type + " of " + newTip.xrp + " XRP");
-    //get amount for each charity
-    //multiply by 1,000,000 to get the perfect rounding (always calculate in drops!)
-    let dropsForEachCharity = calculateDropsForEachCharity(newTip.xrp*config.DROPS)
+async function splitTips() {
+    if(!processingTip && !processingRemaining && tipQueue.length > 0) {
+        console.log("");
+        console.log("");
+        console.log("we have tips in queue, go for it! " + tipQueue.length);
+        processingTip = true;
+        try {
+            let newTip = tipQueue[0];
+            console.log("");
+            console.log("splitting a new " + newTip.type + " of " + newTip.xrp + " XRP");
 
-    if(dropsForEachCharity>0) {
-        console.log("Sending " + dropsForEachCharity/config.DROPS + " XRP to each charity!");
-        for(let i = 0;i<friendList.length;i++) {
-            await tipbot.sendTip('twitter', friendList[i], dropsForEachCharity);
+            let currentBalance = await tipbot.getBalance();
+            if(currentBalance >= newTip.xrp) {
+                //get amount for each charity
+                //multiply by 1,000,000 to get the perfect rounding (always calculate in drops!)
+                let dropsForEachCharity:number = calculateDropsForEachCharity(newTip.xrp*config.DROPS);
+
+                if(dropsForEachCharity>0) {
+                    console.log("Sending " + dropsForEachCharity/config.DROPS + " XRP to each charity!");
+                    for(let i = 0;i<friendList.length;i++) {
+                        await Promise.resolve(setTimeout(() => tipbot.sendTip('twitter', friendList[i], dropsForEachCharity),500));
+                    }
+                    tipQueue = tipQueue.splice(1);
+                    await storage.setItem('tipQueue', tipQueue);
+
+                    //after successfully sent out the tips, try to tweet!
+                    sendOutTweet(newTip, dropsForEachCharity);
+                } else {
+                    console.log("tip too small to split. ignoring.")
+                    tipQueue = tipQueue.splice(1);
+                    await storage.setItem('tipQueue', tipQueue);
+                }
+            } else {
+                console.log("### We have a new tip but not enought balance to split equally!! ###");
+                console.log("current balance: " + currentBalance + " XRP and xrp to split: " + newTip.xrp + " XRP");
+                tipQueue = tipQueue.splice(1);
+                await storage.setItem('tipQueue', tipQueue);
+            }
+        } catch {
+            processingTip = false;
         }
 
-        console.log("Generating new tweet");
-        //send out tweet
-        let tweetString = "";
-        if('deposit'===newTip.type) {
-            tweetString = '.@'+config.MQTT_TOPIC_USER+' just received a direct deposit of ' + newTip.xrp + ' XRP.\n\n';
-        } else {
-            //handle tips from twitter users
-            if('twitter'===newTip.network || 'twitter'===newTip.user_network)
-                tweetString = '.@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
-            //handle tips from discord and reddit users
-            else
-                tweetString = ('discord'===newTip.user_network ? newTip.user_id : newTip.user) +' from '+newTip.user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
+        processingTip = false;
+
+        //check balance only if we don`t have any more tips to split with a delay of some seconds!
+        if(tipQueue.length == 0) {
+            console.log("no tips anymore, set timer for remaining balance!");
+            //set new check remaining balance timeout when we are done sending out all tips
+            if(processRemainingTimeout) clearTimeout(processRemainingTimeout);
+
+            processRemainingTimeout = setTimeout(() => checkForRemainingBalance(),120000);
         }
 
-        //shuffle charities before putting out a new tweet!
-        let shuffledCharities = shuffle(friendList, { 'copy': true });
-        for(let i = 0; i<shuffledCharities.length;i++)
-            tweetString+= '@'+ shuffledCharities[i]+ ' +' + dropsForEachCharity/config.DROPS + ' XRP\n';
-
-        let greetingText = '\n'+twitter.getRandomGreetingsText()+'\n'+twitter.getRandomHashtagText();
-
-        twitter.sendOutTweet(tweetString,greetingText);
     } else {
-        console.log("tip too small to split. ignoring.")
+        if(tipQueue.length > 0) {
+            console.log("Could not process tip. Still processing something else!");
+            console.log("processingTip: " + processingTip);
+            console.log("processingRemaining: " + processingRemaining);
+            console.log("tipQueue: " + tipQueue.length);
+        }
+    }
+}
+
+async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
+    console.log("Generating new tweet");
+    //send out tweet
+    let tweetString = "";
+    if('deposit'===newTip.type) {
+        tweetString = '.@'+config.MQTT_TOPIC_USER+' just received a direct deposit of ' + newTip.xrp + ' XRP.\n\n';
+    } else {
+        //handle tips from twitter users
+        if('twitter'===newTip.network || 'twitter'===newTip.user_network)
+            tweetString = '.@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
+        //handle tips from discord and reddit users
+        else
+            tweetString = ('discord'===newTip.user_network ? newTip.user_id : newTip.user) +' from '+newTip.user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
     }
 
-    checkForRemainingBalance();
+    //shuffle charities before putting out a new tweet!
+    let shuffledCharities = shuffle(friendList, { 'copy': true });
+    for(let i = 0; i<shuffledCharities.length;i++)
+        tweetString+= '@'+ shuffledCharities[i]+ ' +' + dropsForEachCharity/config.DROPS + ' XRP\n';
+
+    let greetingText = '\n'+twitter.getRandomGreetingsText()+'\n'+twitter.getRandomHashtagText();
+
+    twitter.pushToQueue(tweetString,greetingText);
 }
 
 async function checkForRemainingBalance() {
-    //check if there is some balance left and forward it when amount can get equaly divided by all charities
-    let remainingXRPToForward = await tipbot.getBalance();
-    let remainingDropsToForward = remainingXRPToForward*config.DROPS;
-    if(remainingDropsToForward > 0 && remainingDropsToForward%friendList.length == 0) {
-        //ok perfect, the amount can be divided by the number of charities. we can send out another tip to all charities
-        let remainingDropsEachCharity = calculateDropsForEachCharity(remainingDropsToForward);
-        console.log("Account balance could be divided. Sending " + remainingDropsEachCharity/config.DROPS + " XRP to each charity.")
-        for(let i = 0;i<friendList.length;i++) {
-            await tipbot.sendTip('twitter', friendList[i], remainingDropsEachCharity);
+    if(tipQueue.length == 0 && !processingTip && !processingRemaining) {
+        console.log("checking remaining balance");
+        processingRemaining = true;
+        try {
+            //check if there is some balance left and forward it when amount can get equaly divided by all charities
+            let remainingXRPToForward = await tipbot.getBalance();
+            let remainingDropsToForward = remainingXRPToForward*config.DROPS;
+            if(remainingDropsToForward > 0 && remainingDropsToForward%friendList.length == 0) {
+                //ok perfect, the amount can be divided by the number of charities. we can send out another tip to all charities
+                let remainingDropsEachCharity = calculateDropsForEachCharity(remainingDropsToForward);
+                console.log("Account balance could be divided. Sending " + remainingDropsEachCharity/config.DROPS + " XRP to each charity.")
+                if(tipQueue.length == 0 && !processingTip) {
+                    for(let i = 0;i<friendList.length;i++) {
+                        await Promise.resolve(setTimeout(() => tipbot.sendTip('twitter', friendList[i], remainingDropsEachCharity)));
+                    }
+                } else {
+                    console.log("not splitting remaining balance because we have received a new tip");
+                }
+            } else {
+                console.log("no balance to split");
+            }
+
+            processingRemaining = false;
+        } catch {
+            processingRemaining = false;
         }
     }
 }

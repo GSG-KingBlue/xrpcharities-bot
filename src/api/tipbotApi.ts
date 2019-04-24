@@ -1,5 +1,8 @@
 import * as fetch from 'node-fetch';
 import * as config from '../config/config';
+import consoleStamp = require("console-stamp");
+
+consoleStamp(console, { pattern: 'dd-MM-yyyy HH:MM:ss' });
 
 export async function login() {
     return callTipbotApi('/action:login/', 'POST',{"token": config.TIPBOT_API_KEY, "platform": "twitter", "model": "xrpcharities-bot"});
@@ -32,7 +35,7 @@ async function callTipbotApi(path: string, method: string, body?: any) {
     try {
         let fetchResult = await fetch.default(config.TIPBOT_URL+path, { headers: {"Content-Type": "application/json"}, method: method, body: JSON.stringify(body)});
         if(fetchResult && fetchResult.ok)
-            return fetchResult.json();
+            return handleTipBotAPIErrorResponse(await fetchResult.json());
         else
             return null;
     } catch(err) {
@@ -40,3 +43,21 @@ async function callTipbotApi(path: string, method: string, body?: any) {
         return null;
     }
 }
+
+async function handleTipBotAPIErrorResponse(response:any): Promise<any> { 
+    if(response && response.data && response.data.code) {
+      switch(response.data.code) {
+        case 200: break;//all ok
+        case 300: console.log('Can\'t tip yourself'); break;
+        case 400: console.log('Destination user disabled TipBot'); break;
+        case 401: console.log('No (or insufficient) balance'); break;
+        case 403: console.log('No amount specified'); break;
+        case 404: console.log('Destination user never logged in at the TipBot website.'); break;
+        case 413: console.log('Exceeded per-tip limit.'); break;
+        case 500: console.log('Destination invalid, to element should contain a string with URI format: xrptipbot://network/user'); break;
+        default : console.log('unknown error occured while calling tipbot api.'); break;
+      }
+    }
+
+    return response;
+  }
