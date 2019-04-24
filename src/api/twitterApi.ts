@@ -126,14 +126,15 @@ export async function emptyQueue(): Promise<void> {
                             tweetQueue = tweetQueue.slice(1);
                             await storage.setItem('tweetQueue',tweetQueue);
                         }
+                    } else {
+                        handleFailedTweet();
                     }
                 } catch(err) {
-                    //give up sending any more tweets if it failed again!
-                    console.log("sending out tweet failed again. giving up.")
                     console.log(JSON.stringify(err));
-                    tweetQueue = tweetQueue.slice(1);
-                    await storage.setItem('tweetQueue',tweetQueue);
+                    handleFailedTweet();
                 }
+            } else {
+                handleFailedTweet();
             }
         }
         
@@ -141,11 +142,18 @@ export async function emptyQueue(): Promise<void> {
     }
 }
 
+async function handleFailedTweet() {
+    //give up sending any more tweets if it failed again!
+    console.log("sending out tweet failed again. giving up.")
+    tweetQueue = tweetQueue.slice(1);
+    await storage.setItem('tweetQueue',tweetQueue);
+}
+
 export async function pushToQueue(message:string, greeting:string) {
-    console.log("pusing to queue: " + message)
+    console.log("pusing new tweet to queue:");
     tweetQueue.push({message: message, greeting: greeting});
     await storage.setItem('tweetQueue', tweetQueue);
-    console.log("queue contains now " + tweetQueue.length + " elements.");
+    console.log("tweetQueue contains now " + tweetQueue.length + " elements.");
 }
 
 async function setNewWindow() {

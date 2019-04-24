@@ -6,6 +6,7 @@ import * as config from './config/config';
 import * as storage from 'node-persist';
 
 import consoleStamp = require("console-stamp");
+import { resolveCname } from 'dns';
 
 consoleStamp(console, { pattern: 'dd-MM-yyyy HH:MM:ss' });
 
@@ -17,6 +18,7 @@ let processingTip = false;
 let processingRemaining = false;
 
 let processRemainingTimeout:NodeJS.Timeout;
+let splitTipsTimeout:NodeJS.Timeout;
 
 initBot();
 
@@ -47,9 +49,6 @@ async function initBot() {
     else {
         //everything is fine - connect to MQTT and listen for transactions
         initMQTT();
-        console.log("Waiting for tips...");
-
-        setInterval(() => splitTips(), 15000);
     }
 
 }
@@ -58,10 +57,15 @@ function initMQTT() {
     mqttClient = mqtt.connect(config.MQTT_URL);
     mqttClient.on('connect', () => {
         console.log("MQTT connected.")
+        console.log("Waiting for tips...");
+
+        splitTipsTimeout = setInterval(() => splitTips(), 15000);
     });
 
     mqttClient.on('close', () => {
         console.log("MQTT closed.");
+        if(splitTipsTimeout)
+            clearInterval(splitTipsTimeout);
     });
 
     mqttClient.on('error', err => {
@@ -69,14 +73,14 @@ function initMQTT() {
         process.stdin.resume();
     });
 
-    mqttClient.on('message', (topic, message) => {
+    mqttClient.on('message', async (topic, message) => {
         let newTip = JSON.parse(message.toString());
         //new tip came in, pushing to queue
         console.log("");
         console.log("received a new tip. pushing to queue " + newTip.xrp + " xrp.")
         console.log("");
         tipQueue.push(newTip);
-        storage.setItem('tipQueue', tipQueue);
+        await storage.setItem('tipQueue', tipQueue);
     });
     
     console.log("subscribing to topic: " + 'tip/received/twitter/'+config.MQTT_TOPIC_USER);
@@ -142,7 +146,11 @@ async function splitTips() {
                 if(dropsForEachCharity>0) {
                     console.log("Sending " + dropsForEachCharity/config.DROPS + " XRP to each charity!");
                     for(let i = 0;i<friendList.length;i++) {
-                        await Promise.resolve(setTimeout(() => tipbot.sendTip('twitter', friendList[i], dropsForEachCharity),500));
+                        //send out tips sync with delay!
+                        await new Promise(async resolve => {
+                            await tipbot.sendTip('twitter', friendList[i], dropsForEachCharity);
+                            setTimeout(resolve, 500);
+                        });
                     }
                     tipQueue = tipQueue.splice(1);
                     await storage.setItem('tipQueue', tipQueue);
@@ -172,6 +180,7 @@ async function splitTips() {
             //set new check remaining balance timeout when we are done sending out all tips
             if(processRemainingTimeout) clearTimeout(processRemainingTimeout);
 
+            //check 2 min after last received tip if resuming balance can be split
             processRemainingTimeout = setTimeout(() => checkForRemainingBalance(),120000);
         }
 
@@ -224,7 +233,11 @@ async function checkForRemainingBalance() {
                 console.log("Account balance could be divided. Sending " + remainingDropsEachCharity/config.DROPS + " XRP to each charity.")
                 if(tipQueue.length == 0 && !processingTip) {
                     for(let i = 0;i<friendList.length;i++) {
-                        await Promise.resolve(setTimeout(() => tipbot.sendTip('twitter', friendList[i], remainingDropsEachCharity)));
+                        //send out tips sync with delay!
+                        await new Promise(async resolve => {
+                            await tipbot.sendTip('twitter', friendList[i], remainingDropsEachCharity);
+                            setTimeout(resolve, 500);
+                        });
                     }
                 } else {
                     console.log("not splitting remaining balance because we have received a new tip");
