@@ -1,14 +1,14 @@
 import * as mqtt from 'mqtt';
 import * as shuffle from 'shuffle-array';
+import * as storage from 'node-persist';
 import * as tipbot from './api/tipbotApi';
 import * as twitter from './api/twitterApi';
 import * as config from './config/config';
-import * as storage from 'node-persist';
+import * as util from './util';
 
 import consoleStamp = require("console-stamp");
-import { resolveCname } from 'dns';
 
-consoleStamp(console, { pattern: 'dd-MM-yyyy HH:MM:ss' });
+consoleStamp(console, { pattern: 'yyyy-mm-dd HH:MM:ss' });
 
 let mqttClient: mqtt.Client;
 let friendList:string[] = [];
@@ -24,7 +24,10 @@ initBot();
 
 async function initBot() {
     //check if all environment variables are set
-    checkEnvironmentVariables();
+    if(!checkEnvironmentVariables()) {
+        process.stdin.resume();
+        return;
+    }
 
     //init storage
     await storage.init({dir: 'storage'});
@@ -33,17 +36,17 @@ async function initBot() {
     if(await storage.getItem('tipQueue'))
         tipQueue = await storage.getItem('tipQueue');
 
-    console.log("loaded tipQueue: " + JSON.stringify(tipQueue));
+    writeToConsole("loaded tipQueue with " + JSON.stringify(tipQueue.length) + " tips.");
 
     //init twitter and tipbot api
     let initSuccessfull = await initTwitterAndTipbot();
-    console.log("friendList: " + JSON.stringify(friendList));
+    writeToConsole("friendList: " + JSON.stringify(friendList));
     if(!initSuccessfull) {
-        console.log("Could not init twitter or tipbot. Bot not working.")
+        writeToConsole("Could not init twitter or tipbot. Bot not working.")
         process.stdin.resume();
     }
     else if(friendList && friendList.length<=0) {
-        console.log("The twitter user does not follow anyone. Bot not working.")
+        writeToConsole("The twitter user does not follow anyone. Bot not working.")
         process.stdin.resume();
     }
     else {
@@ -56,52 +59,52 @@ async function initBot() {
 function initMQTT() {
     mqttClient = mqtt.connect(config.MQTT_URL);
     mqttClient.on('connect', () => {
-        console.log("MQTT connected.")
-        console.log("Waiting for tips...");
+        writeToConsole("MQTT connected. Subscribing to topics:");
+        writeToConsole("subscribing to topic: " + 'tip/received/twitter/'+config.MQTT_TOPIC_USER);
+        writeToConsole("subscribing to topic: " + 'deposit/twitter/'+config.MQTT_TOPIC_USER);
+        mqttClient.subscribe('tip/received/twitter/'+config.MQTT_TOPIC_USER);
+        mqttClient.subscribe('deposit/twitter/'+config.MQTT_TOPIC_USER);
+
+        writeToConsole("Waiting for tips...");
 
         splitTipsTimeout = setInterval(() => splitTips(), 15000);
     });
 
     mqttClient.on('close', () => {
-        console.log("MQTT closed.");
+        writeToConsole("MQTT closed.");
         if(splitTipsTimeout)
             clearInterval(splitTipsTimeout);
     });
 
     mqttClient.on('error', err => {
-        console.log("MQTT not ready: " + err);
+        writeToConsole("MQTT not ready: " + err);
         process.stdin.resume();
     });
 
     mqttClient.on('message', async (topic, message) => {
         let newTip = JSON.parse(message.toString());
         //new tip came in, pushing to queue
-        console.log("");
-        console.log("received a new tip. pushing to queue " + newTip.xrp + " xrp.")
-        console.log("");
+        writeToConsole("");
+        writeToConsole("received a new tip. pushing to queue " + newTip.xrp + " xrp.")
+        writeToConsole("");
         tipQueue.push(newTip);
         await storage.setItem('tipQueue', tipQueue);
     });
-    
-    console.log("subscribing to topic: " + 'tip/received/twitter/'+config.MQTT_TOPIC_USER);
-    console.log("subscribing to topic: " + 'deposit/twitter/'+config.MQTT_TOPIC_USER);
-    mqttClient.subscribe('tip/received/twitter/'+config.MQTT_TOPIC_USER);
-    mqttClient.subscribe('deposit/twitter/'+config.MQTT_TOPIC_USER);
 }
 
 async function initTwitterAndTipbot(): Promise<boolean> {
     //init twitter
     try {
+        await twitter.initTwitter();
+
         let followerResponse = await twitter.getCurrentFollowers();
         if(followerResponse && followerResponse.data && followerResponse.data.users) {
             let followers = followerResponse.data.users;
             //get all accounts which the bot follows
             for(let i = 0; i<followers.length;i++)
                 friendList.push(followers[i].screen_name);
-
-            await twitter.initStorageAndInterval();
         } else {
-            console.log("could not get follower list");
+            writeToConsole("could not get follower list");
             return false;
         }
 
@@ -119,7 +122,7 @@ async function initTwitterAndTipbot(): Promise<boolean> {
         }
     } catch(err) {
         //initialization failed
-        console.log("error: " + JSON.stringify(err));
+        writeToConsole("error: " + JSON.stringify(err));
         return false;
     }
     
@@ -128,14 +131,13 @@ async function initTwitterAndTipbot(): Promise<boolean> {
 
 async function splitTips() {
     if(!processingTip && !processingRemaining && tipQueue.length > 0) {
-        console.log("");
-        console.log("");
-        console.log("we have tips in queue, go for it! " + tipQueue.length);
+        writeToConsole("");
+        writeToConsole("we have tips in queue, go for it! " + tipQueue.length);
         processingTip = true;
         try {
             let newTip = tipQueue[0];
-            console.log("");
-            console.log("splitting a new " + newTip.type + " of " + newTip.xrp + " XRP");
+            writeToConsole("");
+            writeToConsole("splitting a new " + newTip.type + " of " + newTip.xrp + " XRP by " + newTip.user);
 
             let currentBalance = await tipbot.getBalance();
             if(currentBalance >= newTip.xrp) {
@@ -144,7 +146,7 @@ async function splitTips() {
                 let dropsForEachCharity:number = calculateDropsForEachCharity(newTip.xrp*config.DROPS);
 
                 if(dropsForEachCharity>0) {
-                    console.log("Sending " + dropsForEachCharity/config.DROPS + " XRP to each charity!");
+                    writeToConsole("Sending " + dropsForEachCharity/config.DROPS + " XRP to each charity!");
                     for(let i = 0;i<friendList.length;i++) {
                         //send out tips sync with delay!
                         await new Promise(async resolve => {
@@ -158,13 +160,13 @@ async function splitTips() {
                     //after successfully sent out the tips, try to tweet!
                     sendOutTweet(newTip, dropsForEachCharity);
                 } else {
-                    console.log("tip too small to split. ignoring.")
+                    writeToConsole("tip too small to split. ignoring.")
                     tipQueue = tipQueue.splice(1);
                     await storage.setItem('tipQueue', tipQueue);
                 }
             } else {
-                console.log("### We have a new tip but not enought balance to split equally!! ###");
-                console.log("current balance: " + currentBalance + " XRP and xrp to split: " + newTip.xrp + " XRP");
+                writeToConsole("### We have a new tip but not enought balance to split equally!! ###");
+                writeToConsole("current balance: " + currentBalance + " XRP and xrp to split: " + newTip.xrp + " XRP");
                 tipQueue = tipQueue.splice(1);
                 await storage.setItem('tipQueue', tipQueue);
             }
@@ -176,7 +178,7 @@ async function splitTips() {
 
         //check balance only if we don`t have any more tips to split with a delay of some seconds!
         if(tipQueue.length == 0) {
-            console.log("no tips anymore, set timer for remaining balance!");
+            writeToConsole("no tips anymore, set timer for remaining balance!");
             //set new check remaining balance timeout when we are done sending out all tips
             if(processRemainingTimeout) clearTimeout(processRemainingTimeout);
 
@@ -186,16 +188,16 @@ async function splitTips() {
 
     } else {
         if(tipQueue.length > 0) {
-            console.log("Could not process tip. Still processing something else!");
-            console.log("processingTip: " + processingTip);
-            console.log("processingRemaining: " + processingRemaining);
-            console.log("tipQueue: " + tipQueue.length);
+            writeToConsole("Could not process tip. Still processing something else!");
+            writeToConsole("processingTip: " + processingTip);
+            writeToConsole("processingRemaining: " + processingRemaining);
+            writeToConsole("tipQueue: " + tipQueue.length);
         }
     }
 }
 
 async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
-    console.log("Generating new tweet");
+    writeToConsole("Generating new tweet");
     //send out tweet
     let tweetString = "";
     if('deposit'===newTip.type) {
@@ -221,7 +223,7 @@ async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
 
 async function checkForRemainingBalance() {
     if(tipQueue.length == 0 && !processingTip && !processingRemaining) {
-        console.log("checking remaining balance");
+        writeToConsole("checking remaining balance");
         processingRemaining = true;
         try {
             //check if there is some balance left and forward it when amount can get equaly divided by all charities
@@ -230,7 +232,7 @@ async function checkForRemainingBalance() {
             if(remainingDropsToForward > 0 && remainingDropsToForward%friendList.length == 0) {
                 //ok perfect, the amount can be divided by the number of charities. we can send out another tip to all charities
                 let remainingDropsEachCharity = calculateDropsForEachCharity(remainingDropsToForward);
-                console.log("Account balance could be divided. Sending " + remainingDropsEachCharity/config.DROPS + " XRP to each charity.")
+                writeToConsole("Account balance could be divided. Sending " + remainingDropsEachCharity/config.DROPS + " XRP to each charity.")
                 if(tipQueue.length == 0 && !processingTip) {
                     for(let i = 0;i<friendList.length;i++) {
                         //send out tips sync with delay!
@@ -239,11 +241,15 @@ async function checkForRemainingBalance() {
                             setTimeout(resolve, 500);
                         });
                     }
+                    writeToConsole("Remaining balance was split.")
                 } else {
-                    console.log("not splitting remaining balance because we have received a new tip");
+                    writeToConsole("not splitting remaining balance because we have received a new tip");
                 }
             } else {
-                console.log("no balance to split");
+                if(remainingDropsToForward > 0)
+                    writeToConsole("balance could not be split");
+                else
+                    writeToConsole("no balance to split");
             }
 
             processingRemaining = false;
@@ -262,22 +268,42 @@ function calculateDropsForEachCharity(dropsToSplit:number): number {
         return Math.floor(dropsToSplit/friendList.length);        
 }
 
-function checkEnvironmentVariables() {
-    if(!config.MQTT_TOPIC_USER)
-        console.log("Please set the MQTT_TOPIC_USER as environment variable")
+function checkEnvironmentVariables(): boolean {
     
+    if(!config.MQTT_URL)
+        writeToConsole("Please set the MQTT_URL as environment variable")
+
+    if(!config.MQTT_TOPIC_USER)
+        writeToConsole("Please set the MQTT_TOPIC_USER as environment variable")
+    
+    if(!config.TIPBOT_URL)
+        writeToConsole("Please set the TIPBOT_URL as environment variable");
+
     if(!config.TIPBOT_API_KEY)
-        console.log("Please set the TIPBOT_API_KEY as environment variable");
+        writeToConsole("Please set the TIPBOT_API_KEY as environment variable");
 
     if(!config.TWITTER_CONSUMER_KEY)
-        console.log("Please set the TWITTER_CONSUMER_KEY as environment variable");
+        writeToConsole("Please set the TWITTER_CONSUMER_KEY as environment variable");
 
     if(!config.TWITTER_CONSUMER_SECRET)
-        console.log("Please set the TWITTER_CONSUMER_SECRET as environment variable");
+        writeToConsole("Please set the TWITTER_CONSUMER_SECRET as environment variable");
 
     if(!config.TWITTER_ACCESS_TOKEN)
-        console.log("Please set the TWITTER_ACCESS_TOKEN as environment variable");
+        writeToConsole("Please set the TWITTER_ACCESS_TOKEN as environment variable");
 
     if(!config.TWITTER_ACCESS_SECRET)
-        console.log("Please set the TWITTER_ACCESS_SECRET as environment variable");
+        writeToConsole("Please set the TWITTER_ACCESS_SECRET as environment variable");
+
+    return !(!config.MQTT_URL
+                || !config.MQTT_TOPIC_USER
+                    || !config.TIPBOT_URL
+                        || !config.TIPBOT_API_KEY
+                            || !config.TWITTER_CONSUMER_KEY
+                                || !config.TWITTER_CONSUMER_SECRET
+                                    || !config.TWITTER_ACCESS_TOKEN
+                                            || !config.TWITTER_ACCESS_SECRET);
+}
+
+function writeToConsole(message:string) {
+    util.writeConsoleLog('[MAIN] ', message);
 }

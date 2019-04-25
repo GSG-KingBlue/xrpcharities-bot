@@ -1,6 +1,6 @@
 {
   "name": "xrpcharities-bot",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "description": "xprcharities-bot for splitting incoming tips among multiple charities",
   "main": "server.ts",
   "scripts": {
