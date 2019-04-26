@@ -33,6 +33,7 @@ export async function getBalance(): Promise<number> {
     }
 }
 
+//calling tipbot api with some additional error handling
 async function callTipbotApi(path: string, method: string, body?: any, isRetry?:boolean): Promise<any> {
     try {
         let fetchResult = await fetch.default(config.TIPBOT_URL+path, { headers: {"Content-Type": "application/json"}, method: method, body: JSON.stringify(body)});
@@ -42,7 +43,7 @@ async function callTipbotApi(path: string, method: string, body?: any, isRetry?:
             return null;
     } catch(err) {
         writeToConsole(JSON.stringify(err));
-        //try it one more time!
+        //repeat request once if it failed previously
         if(!isRetry)
             return callTipbotApi(path, method, body, true);
         else
@@ -53,7 +54,7 @@ async function callTipbotApi(path: string, method: string, body?: any, isRetry?:
 async function handleTipBotAPIErrorResponse(response:any): Promise<any> { 
     if(response && response.data && response.data.code) {
       switch(response.data.code) {
-        case 200: break;//all ok
+        case 200: break;//all ok -> nothing to do
         case 300: writeToConsole('Can\'t tip yourself'); break;
         case 400: writeToConsole('Destination user disabled TipBot'); break;
         case 401: writeToConsole('No (or insufficient) balance'); break;

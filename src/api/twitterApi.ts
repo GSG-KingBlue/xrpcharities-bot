@@ -85,6 +85,7 @@ export async function emptyQueue(): Promise<void> {
         await setNewWindow();
     }
 
+    //if we are already processing a tweet or we don´t have any tweets -> skip
     if(!isProcessingTweet && maxNumberOfRequestsRemaining > 0 && tweetQueue.length > 0) {
         isProcessingTweet = true;
 
@@ -99,6 +100,7 @@ export async function emptyQueue(): Promise<void> {
             await twitterClient.post('statuses/update', {status: newTweet.message+newTweet.greeting});
             writeToConsole("tweet sent out!");
 
+            //always set latest tweet queue to storage in case the program/server crashes. So it can be restored on startup
             tweetQueue = tweetQueue.slice(1);
             await storage.setItem('tweetQueue',tweetQueue);
         } catch(err) {
@@ -144,6 +146,7 @@ export async function emptyQueue(): Promise<void> {
             }
         }
         
+        //push out message that no tweets can be sent out anymore. waiting for next window to open
         if(maxNumberOfRequestsRemaining==0)
             writeToConsole("Reached max number of tweets within 15 minutes. Waiting for next tweet window to open.")
             
@@ -181,6 +184,7 @@ export function getRandomGreetingsText(): string {
 }
 
 export function getRandomHashtagText(): string {
+    //shuffle hashtags so we get a differnet tweet to avoid duplicate tweet exception
     let shuffledHashtags = shuffle(additionalHashtags, { 'copy': true });
     let hashtags = "";
     for(let i = 0; i<shuffledHashtags.length;i++)
