@@ -10,8 +10,14 @@ export const TIPBOT_URL = process.env.TIPBOT_URL || 'https://www.xrptipbot.com/a
 export const TIPBOT_API_KEY = process.env.TIPBOT_API_KEY;
 export const MAX_XRP_VIA_TIP:number = parseInt(process.env.MAX_XRP_VIA_TIP) || 400;
 
-//twitter api
+//twitter api real
 export const TWITTER_CONSUMER_KEY = process.env.TWITTER_CONSUMER_KEY;
 export const TWITTER_CONSUMER_SECRET = process.env.TWITTER_CONSUMER_SECRET;
 export const TWITTER_ACCESS_TOKEN = process.env.TWITTER_ACCESS_TOKEN;
 export const TWITTER_ACCESS_SECRET = process.env.TWITTER_ACCESS_SECRET;
+
+//twitter api bots
+export const TWITTER_CONSUMER_KEY_BOTS = process.env.TWITTER_CONSUMER_KEY_BOTS;
+export const TWITTER_CONSUMER_SECRET_BOTS = process.env.TWITTER_CONSUMER_SECRET_BOTS;
+export const TWITTER_ACCESS_TOKEN_BOTS = process.env.TWITTER_ACCESS_TOKEN_BOTS;
+export const TWITTER_ACCESS_SECRET_BOTS = process.env.TWITTER_ACCESS_SECRET_BOTS;

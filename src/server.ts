@@ -1,14 +1,14 @@
 import * as mqtt from 'mqtt';
 import * as shuffle from 'shuffle-array';
-import * as storage from 'node-persist';
 import * as tipbot from './api/tipbotApi';
 import * as twitter from './api/twitterApi';
 import * as config from './config/config';
 import * as util from './util';
 
 import consoleStamp = require("console-stamp");
-
 consoleStamp(console, { pattern: 'yyyy-mm-dd HH:MM:ss' });
+
+const nodePersist = require('node-persist');
 
 let mqttClient: mqtt.Client;
 let friendList:string[] = [];
@@ -20,38 +20,50 @@ let processingRemaining = false;
 let processRemainingTimeout:NodeJS.Timeout;
 let splitTipsTimeout:NodeJS.Timeout;
 
+let twitterRealAPI:twitter.TwitterApi;
+let twitterBotAPI: twitter.TwitterApi;
+
+let botAccounts:string[] = ['1059563470952247296', '1088476019399577602', '1077305457268658177', '1131106826819444736', '1082115799840632832', '1106106412713889792','52249814', '1038519523077484545'];
+
+let storage:any;
+
 initBot();
 
 async function initBot() {
     //check if all environment variables are set
-    if(!checkEnvironmentVariables()) {
-        process.stdin.resume();
-        return;
-    }
+    try {
+        if(!checkEnvironmentVariables()) {
+            process.stdin.resume();
+            return;
+        }
 
-    //init storage
-    await storage.init({dir: 'storage'});
+        //init storage
+        storage = nodePersist.create({dir: 'storage/tips', ttl: 3000});
+        await storage.init();
 
-    //check if there is still a tip queue -> if so, reload it so no tips get lost!
-    if(await storage.getItem('tipQueue'))
-        tipQueue = await storage.getItem('tipQueue');
+        //check if there is still a tip queue -> if so, reload it so no tips get lost!
+        if(await storage.getItem('tipQueue'))
+            tipQueue = await storage.getItem('tipQueue');
 
-    writeToConsole("loaded tipQueue with " + JSON.stringify(tipQueue.length) + " tips.");
+        writeToConsole("loaded tipQueue with " + JSON.stringify(tipQueue.length) + " tips.");
 
-    //init twitter and tipbot api
-    let initSuccessfull = await initTwitterAndTipbot();
-    writeToConsole("friendList: " + JSON.stringify(friendList));
-    if(!initSuccessfull) {
-        writeToConsole("Could not init twitter or tipbot. Bot not working.")
-        process.stdin.resume();
-    }
-    else if(friendList && friendList.length<=0) {
-        writeToConsole("The twitter user does not follow anyone. Bot not working.")
-        process.stdin.resume();
-    }
-    else {
-        //everything is fine - connect to MQTT and listen for transactions
-        initMQTT();
+        //init twitter and tipbot api
+        let initSuccessfull = await initTwitterAndTipbot();
+        writeToConsole("friendList: " + JSON.stringify(friendList));
+        if(!initSuccessfull) {
+            writeToConsole("Could not init twitter or tipbot. Bot not working.")
+            process.stdin.resume();
+        }
+        else if(friendList && friendList.length<=0) {
+            writeToConsole("The twitter user does not follow anyone. Bot not working.")
+            process.stdin.resume();
+        }
+        else {
+            //everything is fine - connect to MQTT and listen for transactions
+            initMQTT();
+        }
+    } catch(err) {
+        this.writeToConsole(JSON.stringify(err));
     }
 
 }
@@ -93,16 +105,26 @@ function initMQTT() {
         writeToConsole("received a new tip. pushing to queue " + newTip.xrp + " xrp.")
         writeToConsole("");
         tipQueue.push(newTip);
-        await storage.setItem('tipQueue', tipQueue);
+        try {
+            await storage.setItem('tipQueue', tipQueue);
+        } catch(err) {
+            this.writeToConsole(JSON.stringify(err));
+        }
     });
 }
 
 async function initTwitterAndTipbot(): Promise<boolean> {
     try {
+        writeToConsole("init REAL")
         //init twitter and get friend list
-        await twitter.initTwitter();
+        twitterRealAPI = new twitter.TwitterApi(config.TWITTER_CONSUMER_KEY, config.TWITTER_CONSUMER_SECRET, config.TWITTER_ACCESS_TOKEN, config.TWITTER_ACCESS_SECRET, "real");
+        await twitterRealAPI.initTwitter();
 
-        let followerResponse = await twitter.getCurrentFollowers();
+        writeToConsole("init BOT")
+        twitterBotAPI = new twitter.TwitterApi(config.TWITTER_CONSUMER_KEY_BOTS, config.TWITTER_CONSUMER_SECRET_BOTS, config.TWITTER_ACCESS_TOKEN_BOTS, config.TWITTER_ACCESS_SECRET_BOTS, "bots");
+        await twitterBotAPI.initTwitter();
+
+        let followerResponse = await twitterRealAPI.getCurrentFollowers();
         if(followerResponse && followerResponse.data && followerResponse.data.users) {
             let followers = followerResponse.data.users;
             //get all accounts which the bot follows
@@ -185,7 +207,8 @@ async function splitTips() {
                 let dropsForEachCharity:number = calculateDropsForEachCharity(newTip.xrp*config.DROPS);
                 sendOutTweet(newTip, dropsForEachCharity);
             }
-        } catch {
+        } catch (err) {
+            writeToConsole(JSON.stringify(err));
             processingTip = false;
         }
 
@@ -231,11 +254,22 @@ async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
     for(let i = 0; i<shuffledCharities.length;i++)
         tweetString+= '@'+ shuffledCharities[i]+ ' +' + dropsForEachCharity/config.DROPS + ' XRP\n';
 
-    //add some greetings text
-    let greetingText = '\n'+twitter.getRandomGreetingsText()+'\n'+twitter.getRandomHashtagText();
+    //add some greetings text (keep randomness for each api)
+    let greetingText = "";
+    if(botAccounts.includes(newTip.user_id))
+        greetingText = '\n'+twitterBotAPI.getRandomGreetingsText()+'\n'+twitterBotAPI.getRandomHashtagText();
+    else
+        greetingText = '\n'+twitterRealAPI.getRandomGreetingsText()+'\n'+twitterRealAPI.getRandomHashtagText();
 
-    //push new tweet to queue for sending it out later
-    twitter.pushToQueue(tweetString,greetingText);
+    //push new tweet to queue for sending it out later to the defined api
+    if(botAccounts.includes(newTip.user_id)) {
+        writeToConsole("Pushing to BotAPI")
+        twitterBotAPI.pushToQueue(tweetString,greetingText);
+    }
+    else {
+        writeToConsole("Pushing to RealAPI")
+        twitterRealAPI.pushToQueue(tweetString,greetingText);
+    }
 }
 
 async function checkForRemainingBalance() {
@@ -271,7 +305,8 @@ async function checkForRemainingBalance() {
             }
 
             processingRemaining = false;
-        } catch {
+        } catch(err) {
+            writeToConsole(JSON.stringify(err));
             processingRemaining = false;
         }
     }
@@ -312,6 +347,18 @@ function checkEnvironmentVariables(): boolean {
     if(!config.TWITTER_ACCESS_SECRET)
         writeToConsole("Please set the TWITTER_ACCESS_SECRET as environment variable");
 
+    if(!config.TWITTER_CONSUMER_KEY_BOTS)
+        writeToConsole("Please set the TWITTER_CONSUMER_KEY_BOTS as environment variable");
+
+    if(!config.TWITTER_CONSUMER_SECRET_BOTS)
+        writeToConsole("Please set the TWITTER_CONSUMER_SECRET_BOTS as environment variable");
+
+    if(!config.TWITTER_ACCESS_TOKEN_BOTS)
+        writeToConsole("Please set the TWITTER_ACCESS_TOKEN_BOTS as environment variable");
+
+    if(!config.TWITTER_ACCESS_SECRET_BOTS)
+        writeToConsole("Please set the TWITTER_ACCESS_SECRET_BOTS as environment variable");
+
     return !(!config.MQTT_URL
                 || !config.MQTT_TOPIC_USER
                     || !config.TIPBOT_URL
@@ -319,7 +366,11 @@ function checkEnvironmentVariables(): boolean {
                             || !config.TWITTER_CONSUMER_KEY
                                 || !config.TWITTER_CONSUMER_SECRET
                                     || !config.TWITTER_ACCESS_TOKEN
-                                            || !config.TWITTER_ACCESS_SECRET);
+                                        || !config.TWITTER_ACCESS_SECRET
+                                            || !config.TWITTER_CONSUMER_KEY_BOTS
+                                                || !config.TWITTER_CONSUMER_SECRET_BOTS
+                                                    || !config.TWITTER_ACCESS_TOKEN_BOTS
+                                                        || !config.TWITTER_ACCESS_SECRET_BOTS);
 }
 
 function writeToConsole(message:string) {

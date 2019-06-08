@@ -1,198 +1,245 @@
 import * as Twit from 'twit';
 import * as shuffle from 'shuffle-array';
-import * as storage from 'node-persist';
 import consoleStamp = require("console-stamp");
+consoleStamp(console, { pattern: 'yyyy-mm-dd HH:MM:ss' });
+
+const nodePersist = require('node-persist');
 
 import * as config from '../config/config';
 import * as util from '../util';
-
-
-consoleStamp(console, { pattern: 'yyyy-mm-dd HH:MM:ss' });
-
-let additionalTweetText:string[] = [
-    "Thank you for your donation!",
-    "Can we have a retweet and spread the good word?",
-    "What a wonderful way to start the day.",
-    "Saving the world. A few $XRP at a time.",
-    "Good people do good things.",
-    "Wow, what a great way to share some $XRP!",
-    "Time to make it rain!",
-    "We love the xrptipbot!",
-    "Giving is great, giving $XRP is AMAZING!",
-    "Thank you for being a Good Soul.",
-    "Helping the world, one donation at a time.",
-    "Your generosity is appreciated.",
-    "Spreading the $XRP love.",
-];
-
-let additionalHashtags:string[] = [
-    "#XRPforGood",
-    "#XRPCommunity",
-    "#XRP"
-];
 
 interface tweetMessage {
     message:string,
     greeting:string
 }
 
-let tweetWindow:number = 15*60*1000; //16 minutes
+export class TwitterApi {
 
-let tweetQueue:tweetMessage[] = [];
-let lastWindowStart:number = 0;
-let maxNumberOfRequestsRemaining = 0;
-let isProcessingTweet = false;
+    additionalTweetText:string[] = [
+        "Thank you for your donation!",
+        "Can we have a retweet and spread the good word?",
+        "What a wonderful way to start the day.",
+        "Saving the world. A few $XRP at a time.",
+        "Good people do good things.",
+        "Wow, what a great way to share some $XRP!",
+        "Time to make it rain!",
+        "We love the xrptipbot!",
+        "Giving is great, giving $XRP is AMAZING!",
+        "Thank you for being a Good Soul.",
+        "Helping the world, one donation at a time.",
+        "Your generosity is appreciated.",
+        "Spreading the $XRP love.",
+    ];
 
-let twitterClient:Twit;
+    additionalHashtags:string[] = [
+        "#XRPforGood",
+        "#XRPCommunity",
+        "#XRP"
+    ];
 
-export async function initTwitter() {
-    twitterClient = new Twit({
-        consumer_key: config.TWITTER_CONSUMER_KEY,
-        consumer_secret: config.TWITTER_CONSUMER_SECRET,
-        access_token: config.TWITTER_ACCESS_TOKEN,
-        access_token_secret: config.TWITTER_ACCESS_SECRET
-    });
+    consumer_key:string;
+    consumer_secret:string;
+    access_token:string;
+    access_token_secret:string;
 
-    await storage.init({dir: 'storage'});
+    tweetWindow:number = 15*60*1000; //16 minutes
 
-    //check if we have a queue
-    if(await storage.getItem('tweetQueue'))
-        tweetQueue = await storage.getItem('tweetQueue');
+    tweetQueue:tweetMessage[] = [];
+    lastWindowStart:number = 0;
+    maxNumberOfRequestsRemaining = 0;
+    isProcessingTweet = false;
 
-    if(await storage.getItem('lastWindowStart'))
-        lastWindowStart = await storage.getItem('lastWindowStart');
+    twitterClient:Twit;
+    storageName:string;
+    storage:any;
 
-    if(await storage.getItem('maxNumberOfRequestsRemaining'))
-        maxNumberOfRequestsRemaining = await storage.getItem('maxNumberOfRequestsRemaining');
-
-    writeToConsole("loaded tweetQueue with: " + JSON.stringify(tweetQueue.length) + " tweets.");
-    writeToConsole("loaded lastWindowStart: " + lastWindowStart);
-    writeToConsole("loaded maxNumberOfRequestsRemaining: " + maxNumberOfRequestsRemaining);
-
-    //set interval timer to empty queue every 30 seconds
-    setInterval(async () => emptyQueue(), 30000);
-}
-
-export async function getCurrentFollowers(): Promise<any> {
-    return twitterClient.get('friends/list');
-}
-
-export async function emptyQueue(): Promise<void> {
-    
-    //check if we can set a new start window
-    if(!isProcessingTweet && tweetQueue.length > 0 && ((lastWindowStart+tweetWindow) < Date.now())) {
-        //start a new
-        await setNewWindow();
+    constructor(consumer_key:string, consumer_secret:string, access_token:string, access_token_secret:string, storageName:string) {
+        this.consumer_key = consumer_key;
+        this.consumer_secret = consumer_secret;
+        this.access_token = access_token;
+        this.access_token_secret = access_token_secret;
+        this.storageName = this.storageName;
     }
 
-    //if we are already processing a tweet or we don´t have any tweets -> skip
-    if(!isProcessingTweet && maxNumberOfRequestsRemaining > 0 && tweetQueue.length > 0) {
-        isProcessingTweet = true;
+    async initTwitter() {
+        this.twitterClient = new Twit({
+            consumer_key: config.TWITTER_CONSUMER_KEY,
+            consumer_secret: config.TWITTER_CONSUMER_SECRET,
+            access_token: config.TWITTER_ACCESS_TOKEN,
+            access_token_secret: config.TWITTER_ACCESS_SECRET
+        });
 
-        writeToConsole("maxNumberOfRequestsRemaining: " + maxNumberOfRequestsRemaining)
-        writeToConsole("tweetQueue: " + tweetQueue.length)
-        
-        let newTweet:tweetMessage = tweetQueue[0];
-        writeToConsole("Sending out new tweet with " + maxNumberOfRequestsRemaining + " requests remaining.");
         try {
-            maxNumberOfRequestsRemaining--;
-            await storage.setItem('maxNumberOfRequestsRemaining',maxNumberOfRequestsRemaining);
-            await twitterClient.post('statuses/update', {status: newTweet.message+newTweet.greeting});
-            writeToConsole("tweet sent out!");
+            this.storage = nodePersist.create({dir: 'storage/'+this.storageName, ttl: 3000});
+            await this.storage.init();
 
-            //always set latest tweet queue to storage in case the program/server crashes. So it can be restored on startup
-            tweetQueue = tweetQueue.slice(1);
-            await storage.setItem('tweetQueue',tweetQueue);
+
+            //check if we have a queue
+            if(await this.storage.getItem('tweetQueue'))
+                this.tweetQueue = await this.storage.getItem('tweetQueue');
+
+            if(await this.storage.getItem('lastWindowStart'))
+                this.lastWindowStart = await this.storage.getItem('lastWindowStart');
+
+            if(await this.storage.getItem('maxNumberOfRequestsRemaining'))
+                this.maxNumberOfRequestsRemaining = await this.storage.getItem('maxNumberOfRequestsRemaining');
         } catch(err) {
-            writeToConsole(JSON.stringify(err));
-            writeToConsole("Could not send out tweet! Trying again.")
-            if(err && err.code) {
-                try {
-                    if(err.code == 186) {
-                        //tweet to long. try to send tweet without any greeting!
-                        if(maxNumberOfRequestsRemaining > 0) {
-                            maxNumberOfRequestsRemaining--;
-                            await storage.setItem('maxNumberOfRequestsRemaining',maxNumberOfRequestsRemaining);
-                            await twitterClient.post('statuses/update', {status: newTweet.message});
-                            writeToConsole("tweet sent out!");
+            this.writeToConsole(JSON.stringify(err));
+        }
 
-                            tweetQueue = tweetQueue.slice(1);
-                            await storage.setItem('tweetQueue',tweetQueue);
-                        }
+        this.writeToConsole("loaded tweetQueue with: " + JSON.stringify(this.tweetQueue.length) + " tweets.");
+        this.writeToConsole("loaded lastWindowStart: " + this.lastWindowStart);
+        this.writeToConsole("loaded maxNumberOfRequestsRemaining: " + this.maxNumberOfRequestsRemaining);
 
-                    } else if(err.code == 187) {
-                        //duplicate tweet exception, try another greetings text
-                        let greetingText = '\n'+getRandomGreetingsText() + '\n' + getRandomHashtagText();
-                        writeToConsole("sending out modified message: " + newTweet.message+greetingText);
+        //set interval timer to empty queue every 30 seconds
+        setInterval(async () => this.emptyQueue(), 30000);
+    }
 
-                        if(maxNumberOfRequestsRemaining > 0) {
-                            maxNumberOfRequestsRemaining--;
-                            await storage.setItem('maxNumberOfRequestsRemaining',maxNumberOfRequestsRemaining);
-                            await twitterClient.post('statuses/update', {status:newTweet. message+greetingText});
-                            writeToConsole("tweet sent out!");
+    async getCurrentFollowers(): Promise<any> {
+        return this.twitterClient.get('friends/list');
+    }
 
-                            tweetQueue = tweetQueue.slice(1);
-                            await storage.setItem('tweetQueue',tweetQueue);
-                        }
-                    } else {
-                        await handleFailedTweet();
-                    }
-                } catch(err) {
-                    writeToConsole(JSON.stringify(err));
-                    await handleFailedTweet();
-                }
-            } else {
-                await handleFailedTweet();
+    async emptyQueue(): Promise<void> {
+        
+        //check if we can set a new start window
+        if(!this.isProcessingTweet && this.tweetQueue.length > 0 && ((this.lastWindowStart+this.tweetWindow) < Date.now())) {
+            //start a new
+            try {
+                await this.setNewWindow();
+            } catch(err) {
+                this.writeToConsole(JSON.stringify(err));
             }
         }
-        
-        //push out message that no tweets can be sent out anymore. waiting for next window to open
-        if(maxNumberOfRequestsRemaining==0)
-            writeToConsole("Reached max number of tweets within 15 minutes. Waiting for next tweet window to open.")
+
+        //if we are already processing a tweet or we don´t have any tweets -> skip
+        if(!this.isProcessingTweet && this.maxNumberOfRequestsRemaining > 0 && this.tweetQueue.length > 0) {
+            this.isProcessingTweet = true;
+
+            this.writeToConsole("maxNumberOfRequestsRemaining: " + this.maxNumberOfRequestsRemaining)
+            this.writeToConsole("tweetQueue: " + this.tweetQueue.length)
             
-        isProcessingTweet = false;
+            let newTweet:tweetMessage = this.tweetQueue[0];
+            this.writeToConsole("Sending out new tweet with " + this.maxNumberOfRequestsRemaining + " requests remaining.");
+            try {
+                this.maxNumberOfRequestsRemaining--;
+                await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
+                await this.twitterClient.post('statuses/update', {status: newTweet.message+newTweet.greeting});
+                this.writeToConsole("tweet sent out!");
+
+                //always set latest tweet queue to this.storage in case the program/server crashes. So it can be restored on startup
+                this.tweetQueue = this.tweetQueue.slice(1);
+                await this.storage.setItem('tweetQueue',this.tweetQueue);
+            } catch(err) {
+                this.writeToConsole(JSON.stringify(err));
+                this.writeToConsole("Could not send out tweet! Trying again.")
+                if(err && err.code) {
+                    try {
+                        if(err.code == 186) {
+                            //tweet to long. try to send tweet without any greeting!
+                            if(this.maxNumberOfRequestsRemaining > 0) {
+                                this.maxNumberOfRequestsRemaining--;
+                                await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
+                                await this.twitterClient.post('statuses/update', {status: newTweet.message});
+                                this.writeToConsole("tweet sent out!");
+
+                                this.tweetQueue = this.tweetQueue.slice(1);
+                                await this.storage.setItem('tweetQueue',this.tweetQueue);
+                            }
+
+                        } else if(err.code == 187) {
+                            //duplicate tweet exception, try another greetings text
+                            let greetingText = '\n'+this.getRandomGreetingsText() + '\n' + this.getRandomHashtagText();
+                            this.writeToConsole("sending out modified message: " + newTweet.message+greetingText);
+
+                            if(this.maxNumberOfRequestsRemaining > 0) {
+                                this.maxNumberOfRequestsRemaining--;
+                                await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
+                                await this.twitterClient.post('statuses/update', {status:newTweet. message+greetingText});
+                                this.writeToConsole("tweet sent out!");
+
+                                this.tweetQueue = this.tweetQueue.slice(1);
+                                await this.storage.setItem('tweetQueue',this.tweetQueue);
+                            }
+                        } else {
+                            await this.handleFailedTweet();
+                        }
+                    } catch(err) {
+                        this.writeToConsole(JSON.stringify(err));
+                        try {
+                            await this.handleFailedTweet();
+                        } catch(err) {
+                            this.writeToConsole(JSON.stringify(err));
+                        }
+                    }
+                } else {
+                    try {
+                        await this.handleFailedTweet();
+                    } catch(err) {
+                        this.writeToConsole(JSON.stringify(err));
+                    }
+                }
+            }
+            
+            //push out message that no tweets can be sent out anymore. waiting for next window to open
+            if(this.maxNumberOfRequestsRemaining==0)
+                this.writeToConsole("Reached max number of tweets within 15 minutes. Waiting for next tweet window to open.")
+                
+            this.isProcessingTweet = false;
+        }
     }
-}
 
-async function handleFailedTweet(): Promise<any> {
-    //give up sending any more tweets if it failed again!
-    writeToConsole("sending out tweet failed again. giving up.")
-    tweetQueue = tweetQueue.slice(1);
-    return storage.setItem('tweetQueue',tweetQueue);
-}
+    async handleFailedTweet(): Promise<any> {
+        //give up sending any more tweets if it failed again!
+        this.writeToConsole("sending out tweet failed again. giving up.")
+        this.tweetQueue = this.tweetQueue.slice(1);
+        try {
+            return this.storage.setItem('tweetQueue',this.tweetQueue);
+        } catch(err) {
+            this.writeToConsole(JSON.stringify(err));
+        }
+    }
 
-export async function pushToQueue(message:string, greeting:string) {
-    writeToConsole("pusing new tweet to queue:");
-    tweetQueue.push({message: message, greeting: greeting});
-    await storage.setItem('tweetQueue', tweetQueue);
-    writeToConsole("tweetQueue contains now " + tweetQueue.length + " elements.");
-}
+    async pushToQueue(message:string, greeting:string) {
+        this.writeToConsole("pusing new tweet to queue:");
+        this.tweetQueue.push({message: message, greeting: greeting});
+        try {
+            await this.storage.setItem('tweetQueue', this.tweetQueue);
+        } catch(err) {
+            this.writeToConsole(JSON.stringify(err));
+        }
+        this.writeToConsole("tweetQueue contains now " + this.tweetQueue.length + " elements.");
+    }
 
-async function setNewWindow(): Promise<any> {
-    writeToConsole("Resetting window")
-    //reset start time
-    lastWindowStart = Date.now();
-    await storage.setItem('lastWindowStart',lastWindowStart);
-    //reset number of possible tweets
-    maxNumberOfRequestsRemaining = 15;
-    return storage.setItem('maxNumberOfRequestsRemaining',maxNumberOfRequestsRemaining);
-}
+    async setNewWindow(): Promise<any> {
+        this.writeToConsole("Resetting window")
+        //reset start time
+        this.lastWindowStart = Date.now();
+        try {
+            await this.storage.setItem('lastWindowStart',this.lastWindowStart);
+        } catch(err) {
+            this.writeToConsole(JSON.stringify(err));
+        }
+        //reset number of possible tweets
+        this.maxNumberOfRequestsRemaining = 15;
+        return this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
+    }
 
-export function getRandomGreetingsText(): string {
-    //return a random text, the range is the length of the text array
-    return additionalTweetText[Math.floor(Math.random() * additionalTweetText.length)];
-}
+    getRandomGreetingsText(): string {
+        //return a random text, the range is the length of the text array
+        return this.additionalTweetText[Math.floor(Math.random() * this.additionalTweetText.length)];
+    }
 
-export function getRandomHashtagText(): string {
-    //shuffle hashtags so we get a differnet tweet to avoid duplicate tweet exception
-    let shuffledHashtags = shuffle(additionalHashtags, { 'copy': true });
-    let hashtags = "";
-    for(let i = 0; i<shuffledHashtags.length;i++)
-        hashtags+=shuffledHashtags[i] + " ";
-    
-    return hashtags.trim();
-}
+    getRandomHashtagText(): string {
+        //shuffle hashtags so we get a differnet tweet to avoid duplicate tweet exception
+        let shuffledHashtags = shuffle(this.additionalHashtags, { 'copy': true });
+        let hashtags = "";
+        for(let i = 0; i<shuffledHashtags.length;i++)
+            hashtags+=shuffledHashtags[i] + " ";
+        
+        return hashtags.trim();
+    }
 
-function writeToConsole(message:string) {
-    util.writeConsoleLog('[TWITTER] ', message);
+    writeToConsole(message:string) {
+        util.writeConsoleLog('[TWITTER] ', message);
+    }
 }

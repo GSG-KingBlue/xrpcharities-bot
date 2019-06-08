@@ -11,11 +11,15 @@ export async function login() {
 }
 
 export async function sendTip(network:string, user: string, dropsToSend: number): Promise<any> {
-    writeToConsole("sending " + dropsToSend/config.DROPS + " to " + user + " on " + network);
-    //maximum amount which can be sent at a time is 400. Use loop to send multiple payments
-    while(dropsToSend > config.MAX_XRP_VIA_TIP*config.DROPS) {
-        await callTipbotApi('/action:tip/', 'POST', {'token': config.TIPBOT_API_KEY, 'to': 'xrptipbot://'+network+'/'+user, 'amount': config.MAX_XRP_VIA_TIP});
-        dropsToSend -= config.MAX_XRP_VIA_TIP*config.DROPS;
+    try {
+        writeToConsole("sending " + dropsToSend/config.DROPS + " to " + user + " on " + network);
+        //maximum amount which can be sent at a time is 400. Use loop to send multiple payments
+        while(dropsToSend > config.MAX_XRP_VIA_TIP*config.DROPS) {
+            await callTipbotApi('/action:tip/', 'POST', {'token': config.TIPBOT_API_KEY, 'to': 'xrptipbot://'+network+'/'+user, 'amount': config.MAX_XRP_VIA_TIP});
+            dropsToSend -= config.MAX_XRP_VIA_TIP*config.DROPS;
+        }
+    } catch(err) {
+        this.writeToConsole(JSON.stringify(err));
     }
 
     //always return the last response (may be needed elsewhere?)
@@ -23,13 +27,17 @@ export async function sendTip(network:string, user: string, dropsToSend: number)
 }
 
 export async function getBalance(): Promise<number> {
-    let balanceResponse:any = await callTipbotApi('/action:balance/', 'POST', {'token': config.TIPBOT_API_KEY});
-    if(balanceResponse && !balanceResponse.error)
-        return balanceResponse.data.balance.XRP
-    else {
-        writeToConsole("getBalance failed:")
-        writeToConsole(JSON.stringify(balanceResponse));
-        return -1;
+    try {
+        let balanceResponse:any = await callTipbotApi('/action:balance/', 'POST', {'token': config.TIPBOT_API_KEY});
+        if(balanceResponse && !balanceResponse.error)
+            return balanceResponse.data.balance.XRP
+        else {
+            writeToConsole("getBalance failed:")
+            writeToConsole(JSON.stringify(balanceResponse));
+            return -1;
+        }
+    } catch(err) {
+        this.writeToConsole(JSON.stringify(err));
     }
 }
 
