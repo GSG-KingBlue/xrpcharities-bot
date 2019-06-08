@@ -58,7 +58,7 @@ export class TwitterApi {
         this.consumer_secret = consumer_secret;
         this.access_token = access_token;
         this.access_token_secret = access_token_secret;
-        this.storageName = this.storageName;
+        this.storageName = storageName;
     }
 
     async initTwitter() {
@@ -70,7 +70,7 @@ export class TwitterApi {
         });
 
         try {
-            this.storage = nodePersist.create({dir: 'storage/'+this.storageName, ttl: 3000});
+            this.storage = nodePersist.create({dir: 'storage/'+this.storageName});
             await this.storage.init();
 
 

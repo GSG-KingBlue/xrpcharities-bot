@@ -38,7 +38,7 @@ async function initBot() {
         }
 
         //init storage
-        storage = nodePersist.create({dir: 'storage/tips', ttl: 3000});
+        storage = nodePersist.create({dir: 'storage/tips'});
         await storage.init();
 
         //check if there is still a tip queue -> if so, reload it so no tips get lost!
