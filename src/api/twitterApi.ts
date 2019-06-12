@@ -29,6 +29,23 @@ export class TwitterApi {
         "Helping the world, one donation at a time.",
         "Your generosity is appreciated.",
         "Spreading the $XRP love.",
+        "Many small drops together make an ocean!",
+        "Your $XRP will make a difference!",
+        "Small acts of kindness can change the world.",
+        "Every XRP counts!",
+        "Thank you for spreading good vibes!",
+        "Your generosity is compassion in action!",
+        "Kind gestures make this world a better place!",
+        "Generosity is a great growth stratergy :)",
+        "What a great way to make this world a happier place!",
+        "Giving does as much good for the soul as receiving.",
+        "Giving is the greatest joy.",
+        "Giving XRP just makes it even sweeter.",
+        "Kindness will never go unrewarded.",
+        "The secret to a happy life is giving.",
+        "We rise by lifting others!",
+        "The xrptipbot is world changing!",
+        "You are part of the micro-donation revolution!"
     ];
 
     additionalHashtags:string[] = [
