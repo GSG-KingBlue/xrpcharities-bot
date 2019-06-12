@@ -1,12 +1,11 @@
 import * as Twit from 'twit';
 import * as shuffle from 'shuffle-array';
+import * as util from '../util';
+
 import consoleStamp = require("console-stamp");
 consoleStamp(console, { pattern: 'yyyy-mm-dd HH:MM:ss' });
 
 const nodePersist = require('node-persist');
-
-import * as config from '../config/config';
-import * as util from '../util';
 
 interface tweetMessage {
     message:string,
@@ -80,10 +79,10 @@ export class TwitterApi {
 
     async initTwitter() {
         this.twitterClient = new Twit({
-            consumer_key: config.TWITTER_CONSUMER_KEY,
-            consumer_secret: config.TWITTER_CONSUMER_SECRET,
-            access_token: config.TWITTER_ACCESS_TOKEN,
-            access_token_secret: config.TWITTER_ACCESS_SECRET
+            consumer_key: this.consumer_key,
+            consumer_secret: this.consumer_secret,
+            access_token: this.access_token_secret,
+            access_token_secret: this.storageName
         });
 
         try {
