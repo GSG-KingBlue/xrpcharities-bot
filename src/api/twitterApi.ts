@@ -81,8 +81,8 @@ export class TwitterApi {
         this.twitterClient = new Twit({
             consumer_key: this.consumer_key,
             consumer_secret: this.consumer_secret,
-            access_token: this.access_token_secret,
-            access_token_secret: this.storageName
+            access_token: this.access_token,
+            access_token_secret: this.access_token_secret
         });
 
         try {
