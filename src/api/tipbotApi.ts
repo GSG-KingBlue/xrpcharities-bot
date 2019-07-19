@@ -19,7 +19,7 @@ export async function sendTip(network:string, user: string, dropsToSend: number)
             dropsToSend -= config.MAX_XRP_VIA_TIP*config.DROPS;
         }
     } catch(err) {
-        this.writeToConsole(JSON.stringify(err));
+        writeToConsole(JSON.stringify(err));
     }
 
     //always return the last response (may be needed elsewhere?)

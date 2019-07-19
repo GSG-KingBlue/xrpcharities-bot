@@ -9,7 +9,15 @@ const nodePersist = require('node-persist');
 
 interface tweetMessage {
     message:string,
-    greeting:string
+    greeting:string,
+    user:string,
+    network:string
+}
+
+interface tipper {
+    moment: number,
+    user: string,
+    network: string
 }
 
 export class TwitterApi {
@@ -60,7 +68,12 @@ export class TwitterApi {
 
     tweetWindow:number = 15*60*1000; //16 minutes
 
+    //limits per user
+    amountOfTips = 10;
+    timeFrameInMs = 30*60*1000; //30 minutes
+
     tweetQueue:tweetMessage[] = [];
+    lastTipper:tipper[] = [];
     lastWindowStart:number = 0;
     maxNumberOfRequestsRemaining = 0;
     isProcessingTweet = false;
@@ -93,6 +106,9 @@ export class TwitterApi {
             //check if we have a queue
             if(await this.storage.getItem('tweetQueue'))
                 this.tweetQueue = await this.storage.getItem('tweetQueue');
+            
+            if(await this.storage.getItem('lastTipper'))
+                this.lastTipper = await this.storage.getItem('lastTipper');
 
             if(await this.storage.getItem('lastWindowStart'))
                 this.lastWindowStart = await this.storage.getItem('lastWindowStart');
@@ -136,64 +152,77 @@ export class TwitterApi {
             
             let newTweet:tweetMessage = this.tweetQueue[0];
             this.writeToConsole("Sending out new tweet with " + this.maxNumberOfRequestsRemaining + " requests remaining.");
-            try {
-                this.maxNumberOfRequestsRemaining--;
-                await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
-                await this.twitterClient.post('statuses/update', {status: newTweet.message+newTweet.greeting});
-                this.writeToConsole("tweet sent out!");
+            if(this.checkUserLimitations(newTweet)) {
+                try {
+                    this.maxNumberOfRequestsRemaining--;
+                    await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
+                    await this.twitterClient.post('statuses/update', {status: newTweet.message+newTweet.greeting});
+                    this.writeToConsole("tweet sent out!");
 
-                //always set latest tweet queue to this.storage in case the program/server crashes. So it can be restored on startup
-                this.tweetQueue = this.tweetQueue.slice(1);
-                await this.storage.setItem('tweetQueue',this.tweetQueue);
-            } catch(err) {
-                this.writeToConsole(JSON.stringify(err));
-                this.writeToConsole("Could not send out tweet! Trying again.")
-                if(err && err.code) {
-                    try {
-                        if(err.code == 186) {
-                            //tweet to long. try to send tweet without any greeting!
-                            if(this.maxNumberOfRequestsRemaining > 0) {
-                                this.maxNumberOfRequestsRemaining--;
-                                await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
-                                await this.twitterClient.post('statuses/update', {status: newTweet.message});
-                                this.writeToConsole("tweet sent out!");
+                    this.lastTipper = [{user: newTweet.user,network: newTweet.network,moment: Date.now()}].concat(this.lastTipper).slice(0,30);
+                    await this.storage.setItem('lastTipper',this.lastTipper);
 
-                                this.tweetQueue = this.tweetQueue.slice(1);
-                                await this.storage.setItem('tweetQueue',this.tweetQueue);
+                    //always set latest tweet queue to this.storage in case the program/server crashes. So it can be restored on startup
+                    this.tweetQueue = this.tweetQueue.slice(1);
+                    await this.storage.setItem('tweetQueue',this.tweetQueue);
+                } catch(err) {
+                    this.writeToConsole(JSON.stringify(err));
+                    this.writeToConsole("Could not send out tweet! Trying again.")
+                    if(err && err.code) {
+                        try {
+                            if(err.code == 186) {
+                                //tweet to long. try to send tweet without any greeting!
+                                if(this.maxNumberOfRequestsRemaining > 0) {
+                                    this.maxNumberOfRequestsRemaining--;
+                                    await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
+                                    await this.twitterClient.post('statuses/update', {status: newTweet.message});
+                                    this.writeToConsole("tweet sent out!");
+
+                                    this.lastTipper = [{user: newTweet.user,network: newTweet.network,moment: Date.now()}].concat(this.lastTipper).slice(0,30);
+                                    await this.storage.setItem('lastTipper',this.lastTipper);
+
+                                    this.tweetQueue = this.tweetQueue.slice(1);
+                                    await this.storage.setItem('tweetQueue',this.tweetQueue);
+                                }
+
+                            } else if(err.code == 187) {
+                                //duplicate tweet exception, try another greetings text
+                                let greetingText = '\n'+this.getRandomGreetingsText() + '\n' + this.getRandomHashtagText();
+                                this.writeToConsole("sending out modified message: " + newTweet.message+greetingText);
+
+                                if(this.maxNumberOfRequestsRemaining > 0) {
+                                    this.maxNumberOfRequestsRemaining--;
+                                    await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
+                                    await this.twitterClient.post('statuses/update', {status:newTweet. message+greetingText});
+                                    this.writeToConsole("tweet sent out!");
+
+                                    this.lastTipper = [{user: newTweet.user,network: newTweet.network,moment: Date.now()}].concat(this.lastTipper).slice(0,30);
+                                    await this.storage.setItem('lastTipper',this.lastTipper);
+
+                                    this.tweetQueue = this.tweetQueue.slice(1);
+                                    await this.storage.setItem('tweetQueue',this.tweetQueue);
+                                }
+                            } else {
+                                await this.handleFailedTweet();
                             }
-
-                        } else if(err.code == 187) {
-                            //duplicate tweet exception, try another greetings text
-                            let greetingText = '\n'+this.getRandomGreetingsText() + '\n' + this.getRandomHashtagText();
-                            this.writeToConsole("sending out modified message: " + newTweet.message+greetingText);
-
-                            if(this.maxNumberOfRequestsRemaining > 0) {
-                                this.maxNumberOfRequestsRemaining--;
-                                await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
-                                await this.twitterClient.post('statuses/update', {status:newTweet. message+greetingText});
-                                this.writeToConsole("tweet sent out!");
-
-                                this.tweetQueue = this.tweetQueue.slice(1);
-                                await this.storage.setItem('tweetQueue',this.tweetQueue);
+                        } catch(err) {
+                            this.writeToConsole(JSON.stringify(err));
+                            try {
+                                await this.handleFailedTweet();
+                            } catch(err) {
+                                this.writeToConsole(JSON.stringify(err));
                             }
-                        } else {
-                            await this.handleFailedTweet();
                         }
-                    } catch(err) {
-                        this.writeToConsole(JSON.stringify(err));
+                    } else {
                         try {
                             await this.handleFailedTweet();
                         } catch(err) {
                             this.writeToConsole(JSON.stringify(err));
                         }
                     }
-                } else {
-                    try {
-                        await this.handleFailedTweet();
-                    } catch(err) {
-                        this.writeToConsole(JSON.stringify(err));
-                    }
                 }
+            } else {
+                await this.handleFailedTweet();
             }
             
             //push out message that no tweets can be sent out anymore. waiting for next window to open
@@ -215,9 +244,9 @@ export class TwitterApi {
         }
     }
 
-    async pushToQueue(message:string, greeting:string) {
+    async pushToQueue(message:string, greeting:string, user:string, network:string) {
         this.writeToConsole("pusing new tweet to queue:");
-        this.tweetQueue.push({message: message, greeting: greeting});
+        this.tweetQueue.push({message: message, greeting: greeting, user: user, network: network});
         try {
             await this.storage.setItem('tweetQueue', this.tweetQueue);
         } catch(err) {
@@ -253,6 +282,22 @@ export class TwitterApi {
             hashtags+=shuffledHashtags[i] + " ";
         
         return hashtags.trim();
+    }
+
+    checkUserLimitations(newTweet: tweetMessage): boolean {
+        let currentUser:string = newTweet.user;
+        let currentNetwork:string = newTweet.network;
+
+        let tipsInWindow:number = 0;
+
+        for(let i = this.lastTipper.length-1; i >= 0; i--) {
+            if(this.lastTipper[i].user === currentUser && this.lastTipper[i].network === currentNetwork) {
+                if((this.lastTipper[i].moment - Date.now()) <= this.timeFrameInMs)
+                    tipsInWindow++;
+            }
+        }
+
+        return tipsInWindow <= this.amountOfTips;
     }
 
     writeToConsole(message:string) {
