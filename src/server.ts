@@ -238,15 +238,17 @@ async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
     writeToConsole("Generating new tweet");
     //generate main tweet
     let tweetString = "";
+    let user = 'discord'===newTip.user_network ? newTip.user_id : newTip.user;
+    let user_network = 'app'===newTip.network ? newTip.user_network : newTip.network;
     if('deposit'===newTip.type) {
         tweetString = '.@'+config.MQTT_TOPIC_USER+' just received a direct deposit of ' + newTip.xrp + ' XRP.\n\n';
     } else {
         //handle tips from twitter users
-        if('twitter'===newTip.network || 'twitter'===newTip.user_network)
+        if('twitter'===user_network)
             tweetString = '.@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
         //handle tips from discord and reddit users
         else
-            tweetString = ('discord'===newTip.user_network ? newTip.user_id : newTip.user) +' from '+newTip.user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
+            tweetString = user + ' from '+ user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
     }
 
     //shuffle charities before putting into new tweet
@@ -264,11 +266,11 @@ async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
     //push new tweet to queue for sending it out later to the defined api
     if(botAccounts.includes(newTip.user_id)) {
         writeToConsole("Pushing to BotAPI")
-        twitterBotAPI.pushToQueue(tweetString,greetingText,newTip.user,newTip.user_network);
+        twitterBotAPI.pushToQueue(tweetString,greetingText,user,user_network);
     }
     else {
         writeToConsole("Pushing to RealAPI")
-        twitterRealAPI.pushToQueue(tweetString,greetingText,newTip.user,newTip.user_network);
+        twitterRealAPI.pushToQueue(tweetString,greetingText,user,user_network);
     }
 }
 

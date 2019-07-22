@@ -14,12 +14,6 @@ interface tweetMessage {
     network:string
 }
 
-interface tipper {
-    moment: number,
-    user: string,
-    network: string
-}
-
 export class TwitterApi {
 
     additionalTweetText:string[] = [
@@ -73,7 +67,6 @@ export class TwitterApi {
     timeFrameInMs = 30*60*1000; //30 minutes
 
     tweetQueue:tweetMessage[] = [];
-    lastTipper:tipper[] = [];
     lastWindowStart:number = 0;
     maxNumberOfRequestsRemaining = 0;
     isProcessingTweet = false;
@@ -106,9 +99,6 @@ export class TwitterApi {
             //check if we have a queue
             if(await this.storage.getItem('tweetQueue'))
                 this.tweetQueue = await this.storage.getItem('tweetQueue');
-            
-            if(await this.storage.getItem('lastTipper'))
-                this.lastTipper = await this.storage.getItem('lastTipper');
 
             if(await this.storage.getItem('lastWindowStart'))
                 this.lastWindowStart = await this.storage.getItem('lastWindowStart');
@@ -151,16 +141,13 @@ export class TwitterApi {
             this.writeToConsole("tweetQueue: " + this.tweetQueue.length)
             
             let newTweet:tweetMessage = this.tweetQueue[0];
-            this.writeToConsole("Sending out new tweet with " + this.maxNumberOfRequestsRemaining + " requests remaining.");
-            if(this.checkUserLimitations(newTweet)) {
+            if(!(await util.userTippedTooMuch(newTweet.user, newTweet.network))) {
+                this.writeToConsole("Sending out new tweet with " + this.maxNumberOfRequestsRemaining + " requests remaining.");
                 try {
                     this.maxNumberOfRequestsRemaining--;
                     await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
                     await this.twitterClient.post('statuses/update', {status: newTweet.message+newTweet.greeting});
                     this.writeToConsole("tweet sent out!");
-
-                    this.lastTipper = [{user: newTweet.user,network: newTweet.network,moment: Date.now()}].concat(this.lastTipper).slice(0,30);
-                    await this.storage.setItem('lastTipper',this.lastTipper);
 
                     //always set latest tweet queue to this.storage in case the program/server crashes. So it can be restored on startup
                     this.tweetQueue = this.tweetQueue.slice(1);
@@ -178,9 +165,6 @@ export class TwitterApi {
                                     await this.twitterClient.post('statuses/update', {status: newTweet.message});
                                     this.writeToConsole("tweet sent out!");
 
-                                    this.lastTipper = [{user: newTweet.user,network: newTweet.network,moment: Date.now()}].concat(this.lastTipper).slice(0,30);
-                                    await this.storage.setItem('lastTipper',this.lastTipper);
-
                                     this.tweetQueue = this.tweetQueue.slice(1);
                                     await this.storage.setItem('tweetQueue',this.tweetQueue);
                                 }
@@ -196,33 +180,34 @@ export class TwitterApi {
                                     await this.twitterClient.post('statuses/update', {status:newTweet. message+greetingText});
                                     this.writeToConsole("tweet sent out!");
 
-                                    this.lastTipper = [{user: newTweet.user,network: newTweet.network,moment: Date.now()}].concat(this.lastTipper).slice(0,30);
-                                    await this.storage.setItem('lastTipper',this.lastTipper);
-
                                     this.tweetQueue = this.tweetQueue.slice(1);
                                     await this.storage.setItem('tweetQueue',this.tweetQueue);
                                 }
                             } else {
-                                await this.handleFailedTweet();
+                                await this.handleFailedTweet("sending out tweet failed again. giving up.");
                             }
                         } catch(err) {
                             this.writeToConsole(JSON.stringify(err));
                             try {
-                                await this.handleFailedTweet();
+                                await this.handleFailedTweet("error in reprocessing tweet. giving up.");
                             } catch(err) {
                                 this.writeToConsole(JSON.stringify(err));
                             }
                         }
                     } else {
                         try {
-                            await this.handleFailedTweet();
+                            await this.handleFailedTweet("sending out tweet failed with error. giving up.");
                         } catch(err) {
                             this.writeToConsole(JSON.stringify(err));
                         }
                     }
                 }
             } else {
-                await this.handleFailedTweet();
+                try {
+                    await this.handleFailedTweet("user tipped too often. Not sending out tweet!");
+                } catch(err) {
+                    this.writeToConsole(JSON.stringify(err));
+                }
             }
             
             //push out message that no tweets can be sent out anymore. waiting for next window to open
@@ -233,9 +218,9 @@ export class TwitterApi {
         }
     }
 
-    async handleFailedTweet(): Promise<any> {
+    async handleFailedTweet(message: string): Promise<any> {
         //give up sending any more tweets if it failed again!
-        this.writeToConsole("sending out tweet failed again. giving up.")
+        this.writeToConsole(message);
         this.tweetQueue = this.tweetQueue.slice(1);
         try {
             return this.storage.setItem('tweetQueue',this.tweetQueue);
@@ -282,22 +267,6 @@ export class TwitterApi {
             hashtags+=shuffledHashtags[i] + " ";
         
         return hashtags.trim();
-    }
-
-    checkUserLimitations(newTweet: tweetMessage): boolean {
-        let currentUser:string = newTweet.user;
-        let currentNetwork:string = newTweet.network;
-
-        let tipsInWindow:number = 0;
-
-        for(let i = this.lastTipper.length-1; i >= 0; i--) {
-            if(this.lastTipper[i].user === currentUser && this.lastTipper[i].network === currentNetwork) {
-                if((this.lastTipper[i].moment - Date.now()) <= this.timeFrameInMs)
-                    tipsInWindow++;
-            }
-        }
-
-        return tipsInWindow <= this.amountOfTips;
     }
 
     writeToConsole(message:string) {
