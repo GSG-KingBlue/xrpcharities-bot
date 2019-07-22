@@ -283,10 +283,17 @@ export class TwitterApi {
     async checkForTweetMatch(user: string, xrp: number): Promise<string> {
         try {
             this.writeToConsole("user = " + user + " and xrp: " + xrp);
-            let latestMentions = await this.getMentions();
+            let latestMentions:any[] = await this.getMentions();
+            this.writeToConsole("checking mentions: " + latestMentions.length);
 
             for(let i = 0; i < latestMentions.length;i++) {
                 let text:string = latestMentions[i].text;
+
+                this.writeToConsole("screen_name: " + latestMentions[i].user.screen_name + " : " + (latestMentions[i].user.screen_name === user));
+                this.writeToConsole("mqtt_user: " + (latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === config.MQTT_TOPIC_USER.toLowerCase()).length>0))
+                this.writeToConsole("xrptipbot: " + (latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === 'xrptipbot').length>0));
+                this.writeToConsole("text: " + text);
+                this.writeToConsole("amount: " + (text && (text.replace(',','.').includes(""+xrp) || ( xrp < 1 && text.replace(',','.').includes((""+xrp).substring(1))))));
                 
                 if(latestMentions[i].user.screen_name === user //match screen user to sending user
                     && latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === config.MQTT_TOPIC_USER.toLowerCase()).length>0 //match mention of mqtt user
@@ -310,8 +317,8 @@ export class TwitterApi {
     async getMentions() : Promise<any[]> {
         this.writeToConsole("Getting latest mentions");
         try {
-            let homeResponse:any = await this.twitterClient.get('statuses/home_timeline');
-            let mentionsResponse:any = await this.twitterClient.get('statuses/mentions_timeline');
+            let homeResponse:any = await this.twitterClient.get('statuses/home_timeline', {count: 20});
+            let mentionsResponse:any = await this.twitterClient.get('statuses/mentions_timeline', {count: 20});
             
             if(homeResponse && homeResponse.data && mentionsResponse && mentionsResponse.data) {
                 let home:any[] = homeResponse.data;
