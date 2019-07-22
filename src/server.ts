@@ -266,11 +266,11 @@ async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
     //push new tweet to queue for sending it out later to the defined api
     if(botAccounts.includes(newTip.user_id)) {
         writeToConsole("Pushing to BotAPI")
-        twitterBotAPI.pushToQueue(tweetString,greetingText,user,user_network);
+        twitterBotAPI.pushToQueue(tweetString, greetingText, user, user_network, newTip.network, newTip.xrp);
     }
     else {
         writeToConsole("Pushing to RealAPI")
-        twitterRealAPI.pushToQueue(tweetString,greetingText,user,user_network);
+        twitterRealAPI.pushToQueue(tweetString, greetingText, user, user_network, newTip.network, newTip.xrp);
     }
 }
 

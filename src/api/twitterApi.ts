@@ -1,6 +1,7 @@
 import * as Twit from 'twit';
 import * as shuffle from 'shuffle-array';
 import * as util from '../util';
+import * as config from '../config/config';
 
 import consoleStamp = require("console-stamp");
 consoleStamp(console, { pattern: 'yyyy-mm-dd HH:MM:ss' });
@@ -11,7 +12,9 @@ interface tweetMessage {
     message:string,
     greeting:string,
     user:string,
-    network:string
+    user_network:string,
+    tip_network: string,
+    xrp:number
 }
 
 export class TwitterApi {
@@ -141,12 +144,20 @@ export class TwitterApi {
             this.writeToConsole("tweetQueue: " + this.tweetQueue.length)
             
             let newTweet:tweetMessage = this.tweetQueue[0];
-            if(!(await util.userTippedTooMuch(newTweet.user, newTweet.network))) {
+
+            if(!(await util.userTippedTooMuch(newTweet.user, newTweet.user_network))) {
                 this.writeToConsole("Sending out new tweet with " + this.maxNumberOfRequestsRemaining + " requests remaining.");
+                let tweetId:string;
                 try {
                     this.maxNumberOfRequestsRemaining--;
                     await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
-                    await this.twitterClient.post('statuses/update', {status: newTweet.message+newTweet.greeting});
+
+                    //check for reply only when tip was initiated via twitter
+                    if('twitter' === newTweet.tip_network)
+                        tweetId = await this.checkForTweetMatch(newTweet.user, newTweet.xrp);
+
+                    await this.twitterClient.post('statuses/update', {status: newTweet.message+newTweet.greeting, in_reply_to_status_id: tweetId});
+
                     this.writeToConsole("tweet sent out!");
 
                     //always set latest tweet queue to this.storage in case the program/server crashes. So it can be restored on startup
@@ -162,7 +173,7 @@ export class TwitterApi {
                                 if(this.maxNumberOfRequestsRemaining > 0) {
                                     this.maxNumberOfRequestsRemaining--;
                                     await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
-                                    await this.twitterClient.post('statuses/update', {status: newTweet.message});
+                                    await this.twitterClient.post('statuses/update', {status: newTweet.message, in_reply_to_status_id: tweetId});
                                     this.writeToConsole("tweet sent out!");
 
                                     this.tweetQueue = this.tweetQueue.slice(1);
@@ -177,7 +188,7 @@ export class TwitterApi {
                                 if(this.maxNumberOfRequestsRemaining > 0) {
                                     this.maxNumberOfRequestsRemaining--;
                                     await this.storage.setItem('maxNumberOfRequestsRemaining',this.maxNumberOfRequestsRemaining);
-                                    await this.twitterClient.post('statuses/update', {status:newTweet. message+greetingText});
+                                    await this.twitterClient.post('statuses/update', {status:newTweet. message+greetingText, in_reply_to_status_id: tweetId});
                                     this.writeToConsole("tweet sent out!");
 
                                     this.tweetQueue = this.tweetQueue.slice(1);
@@ -229,9 +240,9 @@ export class TwitterApi {
         }
     }
 
-    async pushToQueue(message:string, greeting:string, user:string, network:string) {
+    async pushToQueue(message:string, greeting:string, user:string, user_network:string, tip_network: string, xrp:number) {
         this.writeToConsole("pusing new tweet to queue:");
-        this.tweetQueue.push({message: message, greeting: greeting, user: user, network: network});
+        this.tweetQueue.push({message: message, greeting: greeting, user: user, user_network: user_network, tip_network: tip_network, xrp: xrp});
         try {
             await this.storage.setItem('tweetQueue', this.tweetQueue);
         } catch(err) {
@@ -269,52 +280,62 @@ export class TwitterApi {
         return hashtags.trim();
     }
 
-    writeToConsole(message:string) {
-        util.writeConsoleLog('[TWITTER] ', message);
-    }
-
-    async sendOutWithLinkedTweet(tweetId:string, message: string, greetingText: string) {
-        console.log("Sending out retweet: \n" + message+greetingText);
+    async checkForTweetMatch(user: string, xrp: number): Promise<string> {
         try {
-            await this.twitterClient.post('statuses/retweet/'+tweetId, {status: message+greetingText});
-        } catch(err) {
-        }
-    }
-    
-    async checkForRetweetMatch(user: string, xrp: number): Promise<string> {
-        try {
+            this.writeToConsole("user = " + user + " and xrp: " + xrp);
             let latestMentions = await this.getMentions();
-            console.log("checking mentions: " + latestMentions.length);
+
             for(let i = 0; i < latestMentions.length;i++) {
-                console.log(JSON.stringify(latestMentions[i]));
-                if(latestMentions[i].text.contains(user)
-                    && latestMentions[i].text.contains(xrp+'')) {
+                let text:string = latestMentions[i].text;
+                
+                if(latestMentions[i].user.screen_name === user //match screen user to sending user
+                    && latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === config.MQTT_TOPIC_USER.toLowerCase()).length>0 //match mention of mqtt user
+                    && latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === 'xrptipbot').length>0 //match xrptipbot mention
+                    && (text && (text.replace(',','.').includes(""+xrp) //tip includes tip amount
+                        || ( xrp < 1 && text.replace(',','.').includes((""+xrp).substring(1))))) //tip includes tip amount without 0
+                 ) {
                     //seems we have a match -> return tweet id string to retweet
-                    latestMentionId = latestMentions[i].id_str;
+                    this.writeToConsole("found match: " + latestMentions[i].id_str);
                     return latestMentions[i].id_str;
                 }
             }
     
             return null;
         } catch(err) {
-            console.log("Err Mentions: " + JSON.stringify(err));
+            this.writeToConsole("Err Mentions: " + JSON.stringify(err));
             return null;
         }
     }
     
     async getMentions() : Promise<any[]> {
-        console.log("Getting latest mentions");
+        this.writeToConsole("Getting latest mentions");
         try {
-            let mentions:any = await this.twitterClient.get('statuses/mentions_timeline');
+            let homeResponse:any = await this.twitterClient.get('statuses/home_timeline');
+            let mentionsResponse:any = await this.twitterClient.get('statuses/mentions_timeline');
             
-            if(mentions && mentions.data)
-                return mentions.data;
+            if(homeResponse && homeResponse.data && mentionsResponse && mentionsResponse.data) {
+                let home:any[] = homeResponse.data;
+                let mentions:any[] = mentionsResponse.data;
+
+                let mentionsNotRepliedTo:any[]=[];
+
+                //check for mentions we already have replied to!
+                mentionsNotRepliedTo = mentions.filter(mention => { return home.filter(home => { return mention.id_str === home.in_reply_to_status_id_str}).length==0});
+
+                return mentionsNotRepliedTo;
+
+            } else if(mentionsResponse && mentionsResponse.data)
+                return mentionsResponse.data;
             else
                 return [];
         } catch(err) {
-            console.log("couldn`t get latest mentions");
-            console.log(JSON.stringify(err));
+            this.writeToConsole("couldn`t get latest mentions");
+            this.writeToConsole(JSON.stringify(err));
             return [];
         }
+    }
+
+    writeToConsole(message:string) {
+        util.writeConsoleLog('[TWITTER] ', message);
     }
 }

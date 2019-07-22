@@ -21,9 +21,8 @@ export async function userTippedTooMuch(user: string, network: string): Promise<
         if(apiResponse && apiResponse.ok) {
             let feedResponse:any = await apiResponse.json();
             let feed:[] = feedResponse.feed;
-            writeConsoleLog("UTIL: ", "result: " + JSON.stringify(feed.length));
             //check if user appears too often!
-            writeConsoleLog("UTIL: ", "tipped too often: " + (feed && feed.length > maxNumberOfTips));
+            writeConsoleLog("[UTIL] ", "tipped too often: " + (feed && feed.length > maxNumberOfTips));
             return feed && feed.length > maxNumberOfTips;
         } else {
             //something went wrong. Just tweet about it
