@@ -14,7 +14,7 @@ export async function userTippedTooMuch(user: string, network: string): Promise<
     queryString+= "&user="+user+"&user_network="+network;
     queryString+= "&from_date="+from_date.toLocaleString('de-DE',{timeZone: 'Europe/Berlin'});
 
-    writeConsoleLog("UTIL: ", "queryString: " + queryString);
+    writeConsoleLog("[UTIL] ", "queryString: " + queryString);
     
     try {
         let apiResponse = await fetch.default(config.TIPBOT_FEED_API+queryString, { headers: {"Content-Type": "application/json"}, method: 'GET'});

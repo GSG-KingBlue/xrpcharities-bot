@@ -284,22 +284,16 @@ export class TwitterApi {
         try {
             this.writeToConsole("user = " + user + " and xrp: " + xrp);
             let latestMentions:any[] = await this.getMentions();
-            this.writeToConsole("checking mentions: " + latestMentions.length);
+            this.writeToConsole("checking latest mentions: " + latestMentions.length);
 
             for(let i = 0; i < latestMentions.length;i++) {
-                let text:string = latestMentions[i].text;
-
-                this.writeToConsole("screen_name: " + latestMentions[i].user.screen_name + " : " + (latestMentions[i].user.screen_name === user));
-                this.writeToConsole("mqtt_user: " + (latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === config.MQTT_TOPIC_USER.toLowerCase()).length>0))
-                this.writeToConsole("xrptipbot: " + (latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === 'xrptipbot').length>0));
-                this.writeToConsole("text: " + text);
-                this.writeToConsole("amount: " + (text && (text.replace(',','.').includes(""+xrp) || ( xrp < 1 && text.replace(',','.').includes((""+xrp).substring(1))))));
+                let text:string = latestMentions[i].full_text.replace(/,/g,'.');
                 
                 if(latestMentions[i].user.screen_name === user //match screen user to sending user
                     && latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === config.MQTT_TOPIC_USER.toLowerCase()).length>0 //match mention of mqtt user
                     && latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === 'xrptipbot').length>0 //match xrptipbot mention
-                    && (text && (text.replace(',','.').includes(""+xrp) //tip includes tip amount
-                        || ( xrp < 1 && text.replace(',','.').includes((""+xrp).substring(1))))) //tip includes tip amount without 0
+                    && (text.includes(""+xrp) //tip includes tip amount
+                        || ( xrp < 1 && text.includes((""+xrp).substring(1)))) //tip includes tip amount without 0
                  ) {
                     //seems we have a match -> return tweet id string to retweet
                     this.writeToConsole("found match: " + latestMentions[i].id_str);
@@ -318,7 +312,7 @@ export class TwitterApi {
         this.writeToConsole("Getting latest mentions");
         try {
             let homeResponse:any = await this.twitterClient.get('statuses/home_timeline', {count: 20});
-            let mentionsResponse:any = await this.twitterClient.get('statuses/mentions_timeline', {count: 20});
+            let mentionsResponse:any = await this.twitterClient.get('statuses/mentions_timeline', {count: 20, tweet_mode: "extended"});
             
             if(homeResponse && homeResponse.data && mentionsResponse && mentionsResponse.data) {
                 let home:any[] = homeResponse.data;
