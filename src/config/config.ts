@@ -1,5 +1,8 @@
 //general
 export const DROPS = 1000000;
+export const TWEET_WINDOW:number = parseInt(process.env.TWEET_WINDOW) || 15*60*1000; //16 minutes
+export const USER_LIMIT_TIPS:number = parseInt(process.env.USER_LIMIT_TIPS) || 10; //10 tips per timeframe
+export const USER_LIMIT_TIMEFRAME:number = parseInt(process.env.USER_LIMIT_TIMEFRAME) || 30*60*1000; //30 minutes
 
 //mqtt
 export const MQTT_URL = process.env.MQTT_URL || 'mqtt://mqtt.xrptipbot-api.siedentopf.xyz:4001'

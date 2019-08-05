@@ -40,7 +40,7 @@ export class TwitterApi {
         "Thank you for spreading good vibes!",
         "Your generosity is compassion in action!",
         "Kind gestures make this world a better place!",
-        "Generosity is a great growth stratergy :)",
+        "Generosity is a great growth strategy :)",
         "What a great way to make this world a happier place!",
         "Giving does as much good for the soul as receiving.",
         "Giving is the greatest joy.",
@@ -63,11 +63,11 @@ export class TwitterApi {
     access_token:string;
     access_token_secret:string;
 
-    tweetWindow:number = 15*60*1000; //16 minutes
+    tweetWindow:number = config.TWEET_WINDOW;
 
     //limits per user
-    amountOfTips = 10;
-    timeFrameInMs = 30*60*1000; //30 minutes
+    amountOfTips:number = config.USER_LIMIT_TIPS;
+    timeFrameInMs:number = config.USER_LIMIT_TIMEFRAME; //30 minutes
 
     tweetQueue:tweetMessage[] = [];
     lastWindowStart:number = 0;
@@ -287,7 +287,13 @@ export class TwitterApi {
             this.writeToConsole("checking latest mentions: " + latestMentions.length);
 
             for(let i = 0; i < latestMentions.length;i++) {
+                console.log(JSON.stringify(latestMentions[i]));
                 let text:string = latestMentions[i].full_text.replace(/,/g,'.');
+
+                console.log("screen_name: " + latestMentions[i].user.screen_name === user);
+                console.log("MQTT_TOPIC_USER: " + (latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === config.MQTT_TOPIC_USER.toLowerCase()).length>0));
+                console.log("xrptipbot: " + (latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === 'xrptipbot').length>0));
+                console.log("xrp: " + ((text.includes(""+xrp) || ( xrp < 1 && text.includes((""+xrp).substring(1))))));
                 
                 if(latestMentions[i].user.screen_name === user //match screen user to sending user
                     && latestMentions[i].entities.user_mentions.filter(user => user.screen_name.toLowerCase() === config.MQTT_TOPIC_USER.toLowerCase()).length>0 //match mention of mqtt user
