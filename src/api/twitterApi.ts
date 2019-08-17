@@ -156,6 +156,10 @@ export class TwitterApi {
                     if('twitter' === newTweet.tip_network)
                         tweetId = await this.checkForTweetMatch(newTweet.user, newTweet.xrp);
 
+                    //like the tweet if we found a match
+                    if(tweetId)
+                        this.twitterClient.post('favorites/create', {id: tweetId});
+                    
                     await this.twitterClient.post('statuses/update', {status: newTweet.message+newTweet.greeting, in_reply_to_status_id: tweetId});
 
                     this.writeToConsole("tweet sent out!");
