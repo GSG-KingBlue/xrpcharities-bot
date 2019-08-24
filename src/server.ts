@@ -185,7 +185,7 @@ async function splitTips() {
                         });
                     }
                     //delete the just sent put tip from the queue
-                    tipQueue = tipQueue.splice(1);
+                    tipQueue = tipQueue.slice(1);
                     await storage.setItem('tipQueue', tipQueue);
 
                     //after successfully sent out the tip -> try to tweet!
@@ -193,14 +193,14 @@ async function splitTips() {
                 } else {
                     //tip is less than 6 drops. this cannot be split and will be ignored
                     writeToConsole("tip too small to split. ignoring.")
-                    tipQueue = tipQueue.splice(1);
+                    tipQueue = tipQueue.slice(1);
                     await storage.setItem('tipQueue', tipQueue);
                 }
             } else {
                 //this can happen when the "remainingBalanceChecker" was just running when a new tip came in.
                 writeToConsole("### We have a new tip but not enought balance to split equally!! ###");
                 writeToConsole("current balance: " + currentBalance + " XRP and xrp to split: " + newTip.xrp + " XRP");
-                tipQueue = tipQueue.splice(1);
+                tipQueue = tipQueue.slice(1);
                 await storage.setItem('tipQueue', tipQueue);
 
                 //but still send out the tweet so no one misses out! (it`s not the users fault that the tips was split already)
