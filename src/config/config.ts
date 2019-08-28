@@ -5,11 +5,11 @@ export const USER_LIMIT_TIPS:number = parseInt(process.env.USER_LIMIT_TIPS) || 1
 export const USER_LIMIT_TIMEFRAME:number = parseInt(process.env.USER_LIMIT_TIMEFRAME) || 30*60*1000; //30 minutes
 
 //mqtt
-export const MQTT_URL = process.env.MQTT_URL || 'mqtt://mqtt.xrptipbot-api.siedentopf.xyz:4001'
+export const MQTT_URL = process.env.MQTT_URL || 'mqtt://mqtt.api.xrptipbot-stats.com:4001'
 export const MQTT_TOPIC_USER = process.env.MQTT_TOPIC_USER;
 
 //tipbot feed api
-export const TIPBOT_FEED_API = process.env.TIPBOT_API || 'https://xrptipbot-api.siedentopf.xyz/std-feed'
+export const TIPBOT_FEED_API = process.env.TIPBOT_API || 'https://api.xrptipbot-stats.com/std-feed'
 
 //tipbot api
 export const TIPBOT_URL = process.env.TIPBOT_URL || 'https://www.xrptipbot.com/app/api';

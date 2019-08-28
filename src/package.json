@@ -1,6 +1,6 @@
 {
   "name": "xrpcharities-bot",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "xprcharities-bot for splitting incoming tips among multiple charities",
   "main": "server.ts",
   "scripts": {
@@ -21,6 +21,7 @@
   "homepage": "https://github.com/GSG-KingBlue/xrpcharities-bot#readme",
   "dependencies": {
     "console-stamp": "^0.2.9",
+    "https-proxy-agent": "^2.2.2",
     "mqtt": "^2.18.8",
     "node-fetch": "^2.6.0",
     "node-persist": "^3.0.5",
@@ -31,12 +32,12 @@
   "devDependencies": {
     "@types/console-stamp": "^0.2.32",
     "@types/mqtt": "^2.5.0",
-    "@types/node": "^11.13.18",
-    "@types/node-fetch": "^2.3.7",
+    "@types/node": "^11.13.19",
+    "@types/node-fetch": "^2.5.0",
     "@types/node-persist": "0.0.33",
     "@types/shuffle-array": "0.0.28",
     "@types/twit": "^2.2.22",
-    "concurrently": "^4.1.1",
+    "concurrently": "^4.1.2",
     "nodemon": "^1.19.1"
   }
 }
