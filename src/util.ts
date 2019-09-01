@@ -7,7 +7,7 @@ export function writeConsoleLog(prefixKey:string, message:string) {
 
 export async function userTippedTooMuch(user: string, network: string): Promise<boolean> {
     //call api to get latest tips
-    let maxNumberOfTips:number = 10;
+    let maxNumberOfTips:number = 5;
     let maxNumberOfTimeInMs:number = 30 * 60 * 1000; //30 minutes
     let from_date = new Date(Date.now()-maxNumberOfTimeInMs);
     let queryString = "?type=tip&to="+config.MQTT_TOPIC_USER+"&to_network=twitter";
