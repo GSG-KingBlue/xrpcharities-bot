@@ -24,6 +24,7 @@ let twitterRealAPI:twitter.TwitterApi;
 let twitterBotAPI: twitter.TwitterApi;
 
 let botAccounts:string[] = ['1059563470952247296', '1088476019399577602', '1077305457268658177', '1131106826819444736', '1082115799840632832', '1106106412713889792','52249814', '1038519523077484545'];
+let noTweetUsers:string[] = ['1023321496670883840']
 
 let storage:any;
 
@@ -235,42 +236,46 @@ async function splitTips() {
 }
 
 async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
-    writeToConsole("Generating new tweet");
-    //generate main tweet
-    let tweetString = "";
-    let user = 'discord'===newTip.user_network ? newTip.user_id : newTip.user;
-    let user_network = 'app'===newTip.network ? newTip.user_network : newTip.network;
-    if('deposit'===newTip.type) {
-        tweetString = '.@'+config.MQTT_TOPIC_USER+' just received a direct deposit of ' + newTip.xrp + ' XRP.\n\n';
-    } else {
-        //handle tips from twitter users
-        if('twitter'===user_network)
-            tweetString = '.@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
-        //handle tips from discord and reddit users
+    if(!noTweetUsers.includes(newTip.user_id)) {
+        writeToConsole("Generating new tweet");
+        //generate main tweet
+        let tweetString = "";
+        let user = 'discord'===newTip.user_network ? newTip.user_id : newTip.user;
+        let user_network = 'app'===newTip.network ? newTip.user_network : newTip.network;
+        if('deposit'===newTip.type) {
+            tweetString = '.@'+config.MQTT_TOPIC_USER+' just received a direct deposit of ' + newTip.xrp + ' XRP.\n\n';
+        } else {
+            //handle tips from twitter users
+            if('twitter'===user_network)
+                tweetString = '.@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
+            //handle tips from discord and reddit users
+            else
+                tweetString = user + ' from '+ user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
+        }
+
+        //shuffle charities before putting into new tweet
+        let shuffledCharities = shuffle(friendList, { 'copy': true });
+        for(let i = 0; i<shuffledCharities.length;i++)
+            tweetString+= '@'+ shuffledCharities[i]+ ' +' + dropsForEachCharity/config.DROPS + ' XRP\n';
+
+        //add some greetings text (keep randomness for each api)
+        let greetingText = "";
+        if(botAccounts.includes(newTip.user_id))
+            greetingText = '\n'+twitterBotAPI.getRandomGreetingsText()+'\n'+twitterBotAPI.getRandomHashtagText();
         else
-            tweetString = user + ' from '+ user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
-    }
+            greetingText = '\n'+twitterRealAPI.getRandomGreetingsText()+'\n'+twitterRealAPI.getRandomHashtagText();
 
-    //shuffle charities before putting into new tweet
-    let shuffledCharities = shuffle(friendList, { 'copy': true });
-    for(let i = 0; i<shuffledCharities.length;i++)
-        tweetString+= '@'+ shuffledCharities[i]+ ' +' + dropsForEachCharity/config.DROPS + ' XRP\n';
-
-    //add some greetings text (keep randomness for each api)
-    let greetingText = "";
-    if(botAccounts.includes(newTip.user_id))
-        greetingText = '\n'+twitterBotAPI.getRandomGreetingsText()+'\n'+twitterBotAPI.getRandomHashtagText();
-    else
-        greetingText = '\n'+twitterRealAPI.getRandomGreetingsText()+'\n'+twitterRealAPI.getRandomHashtagText();
-
-    //push new tweet to queue for sending it out later to the defined api
-    if(botAccounts.includes(newTip.user_id)) {
-        writeToConsole("Pushing to BotAPI")
-        twitterBotAPI.pushToQueue(tweetString, greetingText, user, user_network, newTip.network, newTip.xrp);
-    }
-    else {
-        writeToConsole("Pushing to RealAPI")
-        twitterRealAPI.pushToQueue(tweetString, greetingText, user, user_network, newTip.network, newTip.xrp);
+        //push new tweet to queue for sending it out later to the defined api
+        if(botAccounts.includes(newTip.user_id)) {
+            writeToConsole("Pushing to BotAPI")
+            twitterBotAPI.pushToQueue(tweetString, greetingText, user, user_network, newTip.network, newTip.xrp);
+        }
+        else {
+            writeToConsole("Pushing to RealAPI")
+            twitterRealAPI.pushToQueue(tweetString, greetingText, user, user_network, newTip.network, newTip.xrp);
+        }
+    } else {
+        writeToConsole("No tweet generated for this user.")
     }
 }
 

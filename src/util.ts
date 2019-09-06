@@ -13,6 +13,7 @@ export async function userTippedTooMuch(user: string, network: string): Promise<
     let queryString = "?type=tip&to="+config.MQTT_TOPIC_USER+"&to_network=twitter";
     queryString+= "&user="+user+"&user_network="+network;
     queryString+= "&from_date="+from_date.toLocaleString('de-DE',{timeZone: 'Europe/Berlin'});
+    queryString+= "&result_fields=id,moment,user,to,xrp"
 
     writeConsoleLog("[UTIL] ", "queryString: " + queryString);
     
