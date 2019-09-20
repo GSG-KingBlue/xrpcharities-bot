@@ -242,7 +242,7 @@ async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
         let tweetString = "";
         let user = 'discord'===newTip.user_network ? newTip.user_id : newTip.user;
         let user_network = newTip.user_network ? newTip.user_network : newTip.network;
-        let transaction_network = newTip.user_network ? newTip.user_network : null;
+        let transaction_network = newTip.user_network ? newTip.network : null;
         if('deposit'===newTip.type) {
             tweetString = '.@'+config.MQTT_TOPIC_USER+' just received a direct deposit of ' + newTip.xrp + ' XRP.\n\n';
         } else {
