@@ -242,16 +242,15 @@ async function sendOutTweet(newTip: any, dropsForEachCharity: number) {
         let tweetString = "";
         let user = 'discord'===newTip.user_network ? newTip.user_id : newTip.user;
         let user_network = newTip.user_network ? newTip.user_network : newTip.network;
-        let transaction_network = newTip.user_network ? newTip.network : null;
         if('deposit'===newTip.type) {
             tweetString = '.@'+config.MQTT_TOPIC_USER+' just received a direct deposit of ' + newTip.xrp + ' XRP.\n\n';
         } else {
             //handle tips from twitter users
             if('twitter'===user_network)
-                tweetString = '.@'+newTip.user+' donated ' + newTip.xrp + ' XRP '+(transaction_network ? ('via '+transaction_network+' ') : '')+'to @'+config.MQTT_TOPIC_USER+'.\n\n';
+                tweetString = '.@'+newTip.user+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
             //handle tips from discord and reddit users
             else
-                tweetString = user + ' from '+ user_network+' donated ' + newTip.xrp + ' XRP '+(transaction_network ? ('via '+transaction_network+' ') : '')+'to @'+config.MQTT_TOPIC_USER+'.\n\n';
+                tweetString = user + ' from '+ user_network+' donated ' + newTip.xrp + ' XRP to @'+config.MQTT_TOPIC_USER+'.\n\n';
         }
 
         //shuffle charities before putting into new tweet
