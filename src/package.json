@@ -23,7 +23,7 @@
     "console-stamp": "^0.2.9",
     "https-proxy-agent": "^2.2.2",
     "mqtt": "^2.18.8",
-    "node-fetch": "^2.6.0",
+    "node-fetch": "^3.1.1",
     "node-persist": "^3.0.5",
     "shuffle-array": "^1.0.1",
     "twit": "^2.2.11",
